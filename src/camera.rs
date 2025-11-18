@@ -1,6 +1,7 @@
 use nalgebra_glm::{Vec3, Mat4, look_at};
 use raylib::prelude::*;
 
+
 pub struct SpaceshipCamera {
     pub position: Vec3,
     pub target: Vec3,
@@ -345,4 +346,73 @@ impl SpaceshipCamera {
         self.smoothed_position = self.position;
         self.smoothed_rotation = (self.yaw, self.pitch);
     }
+
+    /// Calcula la escala apropiada de la nave según la distancia de cámara
+    pub fn get_ship_scale(&self) -> f32 {
+        // Escala base fija - la nave no debe cambiar de tamaño
+        0.35
+    }
+
+    /// Matriz de modelo mejorada para la nave con posición fija relativa
+    pub fn get_ship_model_matrix_fixed(&self, base_scale: f32) -> Mat4 {
+        let mut transform = Mat4::identity();
+        
+        // Calcular vectores de dirección suavizados
+        let forward = Vec3::new(
+            self.smoothed_rotation.0.cos() * self.smoothed_rotation.1.cos(),
+            self.smoothed_rotation.1.sin(),
+            self.smoothed_rotation.0.sin() * self.smoothed_rotation.1.cos(),
+        ).normalize();
+        
+        let right = forward.cross(&Vec3::y()).normalize();
+        let up = right.cross(&forward).normalize();
+        
+        // Posición de la nave relativa a la posición suavizada
+        // Ligeramente adelante y arriba para mejor visibilidad
+        let offset_forward = 2.0;
+        let offset_up = 0.8;
+        let offset_right = 0.5;
+        
+        let ship_position = self.smoothed_position 
+            + forward * offset_forward 
+            + up * offset_up
+            + right * offset_right;
+        
+        // Traslación
+        transform = nalgebra_glm::translate(&transform, &ship_position);
+        
+        // Rotación Y (yaw)
+        let rotation_y = self.smoothed_rotation.0 + std::f32::consts::PI;
+        transform = nalgebra_glm::rotate(&transform, rotation_y, &Vec3::y());
+        
+        // Rotación X (pitch)
+        let rotation_x = -self.smoothed_rotation.1;
+        transform = nalgebra_glm::rotate(&transform, rotation_x, &Vec3::x());
+        
+        // Escala fija
+        transform = nalgebra_glm::scale(&transform, &Vec3::new(base_scale, base_scale, base_scale));
+        
+        transform
+    }
+
+     pub fn get_proximity_mode(&self, bodies: &[(Vec3, f32)]) -> ProximityMode {
+        for (body_pos, body_radius) in bodies {
+            let distance = (body_pos - self.position).magnitude();
+            let critical_distance = body_radius * 100.0;
+            
+            if distance < critical_distance {
+                return ProximityMode::Critical;
+            } else if distance < critical_distance * 2.0 {
+                return ProximityMode::Close;
+            }
+        }
+        ProximityMode::Normal
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ProximityMode {
+    Normal,   // Lejos de todo
+    Close,    // Relativamente cerca
+    Critical, // Muy cerca de un cuerpo
 }

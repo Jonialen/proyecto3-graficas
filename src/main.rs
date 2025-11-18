@@ -167,6 +167,8 @@ fn main() {
             .map(|(i, _body)| (world_positions[i], celestial_bodies[i].radius))
             .collect();
 
+        let proximity_mode = camera.get_proximity_mode(&collision_data);
+
         // ------------ Entradas globales ------------
         if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
             paused = !paused;
@@ -383,17 +385,57 @@ fn main() {
         // ------------ Nave 3ra persona ------------
         if camera.third_person {
             if let Some(ship) = &ship_mesh {
-                let ship_model = camera.get_ship_model_matrix(0.5);
-                
-                renderer.render_mesh(
-                    &mut framebuffer,
-                    ship,
-                    &SimpleMetallicShader,
-                    &ship_model,
-                    &view_matrix,
-                    &projection_matrix_near,
-                    simulation_time,
+                let ship_projection = perspective(
+                    WIDTH as f32 / HEIGHT as f32,
+                    60.0_f32.to_radians(),
+                    0.001,
+                    50.0,
                 );
+
+                let ship_scale = camera.get_ship_scale();
+                let ship_model = camera.get_ship_model_matrix_fixed(ship_scale);
+
+                // ✅ Seleccionar método de renderizado según proximidad
+                match proximity_mode {
+                    camera::ProximityMode::Critical => {
+                        // MUY CERCA: Renderizar sin z-test (siempre visible)
+                        renderer.render_mesh_overlay(
+                            &mut framebuffer,
+                            ship,
+                            &SimpleMetallicShader,
+                            &ship_model,
+                            &view_matrix,
+                            &ship_projection,
+                            simulation_time,
+                        );
+                    }
+                    camera::ProximityMode::Close => {
+                        // CERCA: Bias muy agresivo
+                        renderer.render_mesh_with_bias(
+                            &mut framebuffer,
+                            ship,
+                            &SimpleMetallicShader,
+                            &ship_model,
+                            &view_matrix,
+                            &ship_projection,
+                            simulation_time,
+                            -0.5, // Bias extremo
+                        );
+                    }
+                    camera::ProximityMode::Normal => {
+                        // LEJOS: Bias normal
+                        renderer.render_mesh_with_bias(
+                            &mut framebuffer,
+                            ship,
+                            &SimpleMetallicShader,
+                            &ship_model,
+                            &view_matrix,
+                            &ship_projection,
+                            simulation_time,
+                            -0.05,
+                        );
+                    }
+                }
             }
         }
 

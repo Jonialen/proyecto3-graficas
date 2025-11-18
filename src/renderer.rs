@@ -64,6 +64,149 @@ impl Renderer {
         }
     }
 
+    pub fn render_mesh_with_bias(
+        &self,
+        framebuffer: &mut Framebuffer,
+        mesh: &ObjMesh,
+        shader: &dyn PlanetShader,
+        model_matrix: &Mat4,
+        view_matrix: &Mat4,
+        projection_matrix: &Mat4,
+        time: f32,
+        depth_bias: f32,
+    ) {
+        let mvp = projection_matrix * view_matrix * model_matrix;
+
+        let transformed_vertices: Vec<_> = mesh
+            .vertices
+            .iter()
+            .map(|v| self.transform_vertex(v, model_matrix, &mvp))
+            .collect();
+
+        for i in (0..mesh.indices.len()).step_by(3) {
+            let i0 = mesh.indices[i] as usize;
+            let i1 = mesh.indices[i + 1] as usize;
+            let i2 = mesh.indices[i + 2] as usize;
+
+            if i0 < transformed_vertices.len()
+                && i1 < transformed_vertices.len()
+                && i2 < transformed_vertices.len()
+            {
+                self.rasterize_triangle_with_bias(
+                    framebuffer,
+                    &transformed_vertices[i0],
+                    &transformed_vertices[i1],
+                    &transformed_vertices[i2],
+                    shader,
+                    time,
+                    depth_bias,
+                );
+            }
+        }
+    }
+
+    fn rasterize_triangle_with_bias(
+        &self,
+        framebuffer: &mut Framebuffer,
+        v0: &TransformedVertex,
+        v1: &TransformedVertex,
+        v2: &TransformedVertex,
+        shader: &dyn PlanetShader,
+        time: f32,
+        depth_bias: f32,
+    ) {                
+        if !Self::is_valid_vertex(v0) 
+            || !Self::is_valid_vertex(v1) 
+            || !Self::is_valid_vertex(v2) {
+            return;
+        }
+
+        // Back-face culling
+        let edge1 = Vec2::new(
+            v1.screen_pos.x - v0.screen_pos.x,
+            v1.screen_pos.y - v0.screen_pos.y,
+        );
+        let edge2 = Vec2::new(
+            v2.screen_pos.x - v0.screen_pos.x,
+            v2.screen_pos.y - v0.screen_pos.y,
+        );
+        let cross = edge1.x * edge2.y - edge1.y * edge2.x;
+        
+        if cross <= 0.0 {
+            return;
+        }
+
+        // Validación de profundidad
+        if v0.depth < -1.0 || v0.depth > 1.0 ||
+            v1.depth < -1.0 || v1.depth > 1.0 ||
+            v2.depth < -1.0 || v2.depth > 1.0 {
+            return;
+        }
+
+        let min_x = v0.screen_pos.x.min(v1.screen_pos.x).min(v2.screen_pos.x)
+            .floor().max(0.0) as usize;
+        let max_x = v0.screen_pos.x.max(v1.screen_pos.x).max(v2.screen_pos.x)
+            .ceil().min(self.width - 1.0) as usize;
+        let min_y = v0.screen_pos.y.min(v1.screen_pos.y).min(v2.screen_pos.y)
+            .floor().max(0.0) as usize;
+        let max_y = v0.screen_pos.y.max(v1.screen_pos.y).max(v2.screen_pos.y)
+            .ceil().min(self.height - 1.0) as usize;
+
+        if min_x >= max_x || min_y >= max_y {
+            return;
+        }
+
+        let bbox_width = max_x - min_x;
+        let bbox_height = max_y - min_y;
+        if bbox_width > self.width as usize * 2 || bbox_height > self.height as usize * 2 {
+            return;
+        }
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let p = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+
+                let (w0, w1, w2) = barycentric(
+                    &p,
+                    &v0.screen_pos,
+                    &v1.screen_pos,
+                    &v2.screen_pos
+                );
+
+                if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
+                    let depth = w0 * v0.depth + w1 * v1.depth + w2 * v2.depth;
+                    
+                    // Aplicar depth bias (valores negativos = más cerca de la cámara)
+                    let biased_depth = depth + depth_bias;
+                    
+                    if !biased_depth.is_finite() || biased_depth < -1.0 || biased_depth > 1.0 {
+                        continue;
+                    }
+
+                    let world_pos = v0.world_pos * w0 
+                        + v1.world_pos * w1 
+                        + v2.world_pos * w2;
+                    
+                    if !world_pos.x.is_finite() 
+                        || !world_pos.y.is_finite() 
+                        || !world_pos.z.is_finite() {
+                        continue;
+                    }
+
+                    let world_normal = (v0.world_normal * w0 
+                        + v1.world_normal * w1 
+                        + v2.world_normal * w2)
+                        .normalize();
+
+                    let color = shader.fragment(&world_pos, &world_normal, time);
+                    
+                    // Usar el depth con bias para el z-buffer
+                    framebuffer.set_pixel(x, y, color, biased_depth);
+                }
+            }
+        }
+    }
+
     pub fn render_orbit(
         &self,
         framebuffer: &mut Framebuffer,
@@ -370,6 +513,129 @@ impl Renderer {
             self.project_point(end, &vp),
         ) {
             self.draw_line(framebuffer, &p1, &p2, color);
+        }
+    }
+        /// Renderiza sin z-test (siempre visible, como overlay)
+    pub fn render_mesh_overlay(
+        &self,
+        framebuffer: &mut Framebuffer,
+        mesh: &ObjMesh,
+        shader: &dyn PlanetShader,
+        model_matrix: &Mat4,
+        view_matrix: &Mat4,
+        projection_matrix: &Mat4,
+        time: f32,
+    ) {
+        let mvp = projection_matrix * view_matrix * model_matrix;
+
+        let transformed_vertices: Vec<_> = mesh
+            .vertices
+            .iter()
+            .map(|v| self.transform_vertex(v, model_matrix, &mvp))
+            .collect();
+
+        for i in (0..mesh.indices.len()).step_by(3) {
+            let i0 = mesh.indices[i] as usize;
+            let i1 = mesh.indices[i + 1] as usize;
+            let i2 = mesh.indices[i + 2] as usize;
+
+            if i0 < transformed_vertices.len()
+                && i1 < transformed_vertices.len()
+                && i2 < transformed_vertices.len()
+            {
+                self.rasterize_triangle_overlay(
+                    framebuffer,
+                    &transformed_vertices[i0],
+                    &transformed_vertices[i1],
+                    &transformed_vertices[i2],
+                    shader,
+                    time,
+                );
+            }
+        }
+    }
+
+    fn rasterize_triangle_overlay(
+        &self,
+        framebuffer: &mut Framebuffer,
+        v0: &TransformedVertex,
+        v1: &TransformedVertex,
+        v2: &TransformedVertex,
+        shader: &dyn PlanetShader,
+        time: f32,
+    ) {
+        if !Self::is_valid_vertex(v0) 
+            || !Self::is_valid_vertex(v1) 
+            || !Self::is_valid_vertex(v2) {
+            return;
+        }
+
+        // Back-face culling
+        let edge1 = Vec2::new(
+            v1.screen_pos.x - v0.screen_pos.x,
+            v1.screen_pos.y - v0.screen_pos.y,
+        );
+        let edge2 = Vec2::new(
+            v2.screen_pos.x - v0.screen_pos.x,
+            v2.screen_pos.y - v0.screen_pos.y,
+        );
+        let cross = edge1.x * edge2.y - edge1.y * edge2.x;
+        
+        if cross <= 0.0 {
+            return;
+        }
+
+        let min_x = v0.screen_pos.x.min(v1.screen_pos.x).min(v2.screen_pos.x)
+            .floor().max(0.0) as usize;
+        let max_x = v0.screen_pos.x.max(v1.screen_pos.x).max(v2.screen_pos.x)
+            .ceil().min(self.width - 1.0) as usize;
+        let min_y = v0.screen_pos.y.min(v1.screen_pos.y).min(v2.screen_pos.y)
+            .floor().max(0.0) as usize;
+        let max_y = v0.screen_pos.y.max(v1.screen_pos.y).max(v2.screen_pos.y)
+            .ceil().min(self.height - 1.0) as usize;
+
+        if min_x >= max_x || min_y >= max_y {
+            return;
+        }
+
+        for y in min_y..=max_y {
+            for x in min_x..=max_x {
+                let p = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+
+                let (w0, w1, w2) = barycentric(
+                    &p,
+                    &v0.screen_pos,
+                    &v1.screen_pos,
+                    &v2.screen_pos
+                );
+
+                if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
+                    let world_pos = v0.world_pos * w0 
+                        + v1.world_pos * w1 
+                        + v2.world_pos * w2;
+                    
+                    if !world_pos.x.is_finite() 
+                        || !world_pos.y.is_finite() 
+                        || !world_pos.z.is_finite() {
+                        continue;
+                    }
+
+                    let world_normal = (v0.world_normal * w0 
+                        + v1.world_normal * w1 
+                        + v2.world_normal * w2)
+                        .normalize();
+
+                    let color = shader.fragment(&world_pos, &world_normal, time);
+                    
+                    // ✅ Escribir sin verificar z-buffer
+                    let index = y * framebuffer.width + x;
+                    let idx = index * 4;
+                    framebuffer.buffer[idx] = color.r;
+                    framebuffer.buffer[idx + 1] = color.g;
+                    framebuffer.buffer[idx + 2] = color.b;
+                    framebuffer.buffer[idx + 3] = 255;
+                }
+            }
         }
     }
 }

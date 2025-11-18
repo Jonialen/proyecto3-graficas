@@ -54,7 +54,7 @@ impl Framebuffer {
             width,
             height,
             buffer: vec![0; width * height * 4],
-            zbuffer: vec![f32::INFINITY; width * height],
+            zbuffer: vec![f32::INFINITY; width * height], // INFINITY es correcto
         }
     }
 
@@ -67,8 +67,8 @@ impl Framebuffer {
             self.buffer[idx + 2] = color.b;
             self.buffer[idx + 3] = 255;
         }
-        // IMPORTANTE: Limpiar z-buffer correctamente
-        self.zbuffer.fill(1.0); // Usar 1.0 en vez de INFINITY para mejor compatibilidad
+        // ✅ CORRECTO: Usar INFINITY para representar "infinitamente lejos"
+        self.zbuffer.fill(f32::INFINITY);
     }
     
     #[inline]
@@ -77,19 +77,18 @@ impl Framebuffer {
             return;
         }
 
-        // CAMBIO: Validación de profundidad más permisiva
-        if !depth.is_finite() || depth < -1.5 || depth > 1.5 {
+        // ✅ Validación más estricta de profundidad
+        if !depth.is_finite() {
             return;
         }
 
         let index = y * self.width + x;
 
-        // CAMBIO: Usar depth normalizado para comparación
-        let normalized_depth = (depth + 1.0) * 0.5; // Convertir de [-1,1] a [0,1]
-        let stored_depth = self.zbuffer[index];
-
-        if normalized_depth < stored_depth {
-            self.zbuffer[index] = normalized_depth;
+        // ✅ CLAVE: Comparar depth directamente (sin normalizar)
+        // En espacio NDC: -1.0 (cerca) a 1.0 (lejos)
+        // Menor valor = más cerca de la cámara
+        if depth < self.zbuffer[index] {
+            self.zbuffer[index] = depth;
             let idx = index * 4;
             self.buffer[idx] = color.r;
             self.buffer[idx + 1] = color.g;
@@ -97,6 +96,7 @@ impl Framebuffer {
             self.buffer[idx + 3] = 255;
         }
     }
+
     pub fn as_bytes(&self) -> &[u8] {
         &self.buffer
     }

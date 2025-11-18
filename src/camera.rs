@@ -283,4 +283,66 @@ impl SpaceshipCamera {
             self.position
         }
     }
+
+    /// Verifica y resuelve colisiones con cuerpos celestes
+    pub fn check_collisions(&mut self, bodies: &[(Vec3, f32)]) {
+        for (body_pos, body_radius) in bodies {
+            let to_body = *body_pos - self.position;
+            let distance = to_body.magnitude();
+            let safe_distance = body_radius * 2.5; // Margen de seguridad
+
+            if distance < safe_distance {
+                // Calcular cuánto nos estamos sobrelapando
+                let overlap = safe_distance - distance;
+                
+                if overlap > 0.0 {
+                    // Vector de rechazo (alejar de la superficie)
+                    let rejection_dir = -to_body.normalize();
+                    
+                    // Empujar la posición fuera
+                    self.position += rejection_dir * (overlap + 1.0);
+                    
+                    // Cancelar velocidad hacia el planeta
+                    let velocity_toward_body = self.velocity.dot(&to_body.normalize());
+                    if velocity_toward_body > 0.0 {
+                        // Proyectar velocidad tangente a la superficie
+                        let normal = to_body.normalize();
+                        self.velocity -= normal * velocity_toward_body * 1.2;
+                        
+                        // Añadir pequeño rebote
+                        self.velocity += rejection_dir * 0.5;
+                    }
+                    
+                    // Actualizar valores suavizados inmediatamente
+                    self.smoothed_position = self.position;
+                }
+            }
+        }
+    }
+
+    /// Detecta proximidad peligrosa (para warnings)
+    pub fn get_collision_warning(&self, bodies: &[(Vec3, f32)]) -> Option<(usize, f32, &str)> {
+        for (i, (body_pos, body_radius)) in bodies.iter().enumerate() {
+            let distance = (body_pos - self.position).magnitude();
+            let warning_distance = body_radius * 4.0;
+            
+            if distance < warning_distance {
+                let severity = if distance < body_radius * 2.5 {
+                    "CRÍTICA"
+                } else if distance < body_radius * 3.5 {
+                    "ALTA"
+                } else {
+                    "MEDIA"
+                };
+                
+                return Some((i, distance, severity));
+            }
+        }
+        None
+    }
+
+    pub fn sync_smoothed_position(&mut self) {
+        self.smoothed_position = self.position;
+        self.smoothed_rotation = (self.yaw, self.pitch);
+    }
 }

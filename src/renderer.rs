@@ -2,7 +2,6 @@ use crate::framebuffer::{Framebuffer, Color};
 use crate::mesh::{ObjMesh, Vertex};
 use crate::shaders::PlanetShader;
 use nalgebra_glm::{Mat4, Vec2, Vec3, Vec4};
-use std::sync::atomic::{AtomicU32, Ordering};
 
 pub struct Renderer {
     pub width: f32,
@@ -223,93 +222,75 @@ impl Renderer {
             return;
         }
 
-        // NUEVO: Verificar que los vértices tengan profundidad válida
-        if v0.depth < -1.5 || v0.depth > 1.5 ||
-            v1.depth < -1.5 || v1.depth > 1.5 ||
-            v2.depth < -1.5 || v2.depth > 1.5 {
-                return;
+        // ✅ MEJORADO: Validación más robusta de profundidad
+        if v0.depth < -1.0 || v0.depth > 1.0 ||
+            v1.depth < -1.0 || v1.depth > 1.0 ||
+            v2.depth < -1.0 || v2.depth > 1.0 {
+            return;
         }
 
-        let min_x = v0
-            .screen_pos
-            .x
-            .min(v1.screen_pos.x)
-            .min(v2.screen_pos.x)
-            .floor()
-            .max(0.0) as usize;
-        let max_x = v0
-            .screen_pos
-            .x
-            .max(v1.screen_pos.x)
-            .max(v2.screen_pos.x)
-            .ceil()
-            .min(self.width - 1.0) as usize;
-        let min_y = v0
-            .screen_pos
-            .y
-            .min(v1.screen_pos.y)
-            .min(v2.screen_pos.y)
-            .floor()
-            .max(0.0) as usize;
-        let max_y = v0
-            .screen_pos
-            .y
-            .max(v1.screen_pos.y)
-            .max(v2.screen_pos.y)
-            .ceil()
-            .min(self.height - 1.0) as usize;
+        let min_x = v0.screen_pos.x.min(v1.screen_pos.x).min(v2.screen_pos.x)
+            .floor().max(0.0) as usize;
+        let max_x = v0.screen_pos.x.max(v1.screen_pos.x).max(v2.screen_pos.x)
+            .ceil().min(self.width - 1.0) as usize;
+        let min_y = v0.screen_pos.y.min(v1.screen_pos.y).min(v2.screen_pos.y)
+            .floor().max(0.0) as usize;
+        let max_y = v0.screen_pos.y.max(v1.screen_pos.y).max(v2.screen_pos.y)
+            .ceil().min(self.height - 1.0) as usize;
 
         if min_x >= max_x || min_y >= max_y {
             return;
         }
 
-        // NUEVO: Verificar que el bounding box no sea ridículamente grande
         let bbox_width = max_x - min_x;
         let bbox_height = max_y - min_y;
         if bbox_width > self.width as usize * 2 || bbox_height > self.height as usize * 2 {
-            return; // Triángulo demasiado grande, probablemente un error
+            return;
         }
 
         for y in min_y..=max_y {
-                for x in min_x..=max_x {
-                    let p = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+            for x in min_x..=max_x {
+                let p = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
 
-                    let (w0, w1, w2) = barycentric(
-                        &p,
-                        &v0.screen_pos,
-                        &v1.screen_pos,
-                        &v2.screen_pos
-                    );
+                let (w0, w1, w2) = barycentric(
+                    &p,
+                    &v0.screen_pos,
+                    &v1.screen_pos,
+                    &v2.screen_pos
+                );
 
-                    if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
-                        let depth = w0 * v0.depth + w1 * v1.depth + w2 * v2.depth;
-                        
-                        // CAMBIO: Validación de profundidad más permisiva
-                        if !depth.is_finite() || depth < -1.2 || depth > 1.2 {
-                            continue;
-                        }
-
-                        let world_pos = v0.world_pos * w0 
-                            + v1.world_pos * w1 
-                            + v2.world_pos * w2;
-                        
-                        if !world_pos.x.is_finite() 
-                            || !world_pos.y.is_finite() 
-                            || !world_pos.z.is_finite() {
-                            continue;
-                        }
-
-                        let world_normal = (v0.world_normal * w0 
-                            + v1.world_normal * w1 
-                            + v2.world_normal * w2)
-                            .normalize();
-
-                        let color = shader.fragment(&world_pos, &world_normal, time);
-                        framebuffer.set_pixel(x, y, color, depth);
+                if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
+                    // ✅ CORRECTO: Interpolar depth en NDC space
+                    let depth = w0 * v0.depth + w1 * v1.depth + w2 * v2.depth;
+                    
+                    // Validación final
+                    if !depth.is_finite() || depth < -1.0 || depth > 1.0 {
+                        continue;
                     }
+
+                    let world_pos = v0.world_pos * w0 
+                        + v1.world_pos * w1 
+                        + v2.world_pos * w2;
+                    
+                    if !world_pos.x.is_finite() 
+                        || !world_pos.y.is_finite() 
+                        || !world_pos.z.is_finite() {
+                        continue;
+                    }
+
+                    let world_normal = (v0.world_normal * w0 
+                        + v1.world_normal * w1 
+                        + v2.world_normal * w2)
+                        .normalize();
+
+                    let color = shader.fragment(&world_pos, &world_normal, time);
+                    
+                    // ✅ Pasar depth directamente (sin normalizar)
+                    framebuffer.set_pixel(x, y, color, depth);
                 }
             }
-        }   
+        }
+    }   
         
     pub fn is_in_frustum(
         &self,

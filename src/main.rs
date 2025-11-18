@@ -8,7 +8,10 @@ mod shaders;
 mod trail;
 mod ui;
 mod skybox;
+mod warp_effect;
+mod minimap;
 
+use warp_effect::WarpEffect;
 use framebuffer::{Color, Framebuffer};
 use mesh::ObjMesh;
 use renderer::Renderer;
@@ -19,6 +22,7 @@ use shaders::*;
 use trail::ShipTrail;
 use ui::GameUI;
 use skybox::Skybox;
+use minimap::Minimap;
 
 use nalgebra_glm::{Vec3, perspective};
 use raylib::prelude::*;
@@ -88,6 +92,7 @@ fn main() {
     println!("✓ Sistema solar creado con {} cuerpos", celestial_bodies.len());
 
     let mut camera = SpaceshipCamera::new(Vec3::new(0.0, 500.0, 8000.0));
+    let mut warp_effect = WarpEffect::new();
 
     // =================== FRAMEBUFFER + TEXTURA ===================
     let mut framebuffer = Framebuffer::new(WIDTH, HEIGHT);
@@ -106,6 +111,7 @@ fn main() {
     let skybox = Skybox::new(2000);
 
     let mut show_trail = true;
+    let mut minimap = Minimap::new(200);
     let mut show_minimap = true;
     let mut show_info = true;
 
@@ -122,6 +128,7 @@ fn main() {
 
     println!("=== Sistema iniciado correctamente ===\n");
 
+    // =================== LOOP PRINCIPAL ===================
     // =================== LOOP PRINCIPAL ===================
     while !rl.window_should_close() {
         frame_time += rl.get_frame_time();
@@ -143,6 +150,22 @@ fn main() {
         if !paused {
             simulation_time += current_time_scale;
         }
+
+        // ------------ Calcular posiciones de cuerpos (MOVER AQUÍ) ------------
+        let mut world_positions = Vec::new();
+        for body in celestial_bodies.iter() {
+            let parent_pos = body.parent_index.map(|p| world_positions[p]);
+            world_positions.push(
+                body.get_world_position(simulation_time, parent_pos)
+            );
+        }
+
+        // ✅ NUEVO: Preparar datos de colisión (ANTES del manejo de input)
+        let collision_data: Vec<(Vec3, f32)> = celestial_bodies
+            .iter()
+            .enumerate()
+            .map(|(i, _body)| (world_positions[i], celestial_bodies[i].radius))
+            .collect();
 
         // ------------ Entradas globales ------------
         if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
@@ -169,7 +192,11 @@ fn main() {
         // ------------ Teleportación ------------
         if show_menu {
             if rl.is_key_pressed(KeyboardKey::KEY_ZERO) {
-                camera.teleport_to(Vec3::zeros(), 500.0);
+                let target_pos = Vec3::zeros();
+                
+                // ✅ Iniciar warp animado
+                warp_effect.start_warp(camera.position, target_pos, 1.5);
+                
                 ship_trail.clear();
                 show_menu = false;
                 rl.disable_cursor();
@@ -190,12 +217,12 @@ fn main() {
                 };
 
                 if rl.is_key_pressed(key) && i < celestial_bodies.len() {
-                    let body = &celestial_bodies[i];
-                    let parent_pos = body.parent_index.map(|p| {
-                        celestial_bodies[p].get_world_position(simulation_time, None)
-                    });
-                    let target = body.get_world_position(simulation_time, parent_pos);
-                    camera.teleport_to(target, body.radius * 3.0);
+                    let _body = &celestial_bodies[i];
+                    let target = world_positions[i];
+                    
+                    // ✅ Warp animado
+                    warp_effect.start_warp(camera.position, target, 2.0);
+                    
                     ship_trail.clear();
                     show_menu = false;
                     rl.disable_cursor();
@@ -203,9 +230,22 @@ fn main() {
             }
         } 
         else {
-            camera.update(&rl);
-            if show_trail && !paused {
-                ship_trail.update(camera.position, frame_time);
+            // ✅ Actualizar warp
+            if let Some(warp_pos) = warp_effect.update(rl.get_frame_time()) {
+                camera.position = warp_pos;
+                camera.sync_smoothed_position(); // Usar método público
+            }
+            
+            // Solo permitir control manual si no estamos en warp
+            if !warp_effect.is_active() {
+                camera.update(&rl);
+                
+                // ✅ Sistema de colisión
+                camera.check_collisions(&collision_data);
+                
+                if show_trail && !paused {
+                    ship_trail.update(camera.position, frame_time);
+                }
             }
         }
 
@@ -236,18 +276,9 @@ fn main() {
             HEIGHT as f32,
         );
 
-        // ------------ Calcular posiciones de cuerpos ------------
-        let mut world_positions = Vec::new();
-        for body in celestial_bodies.iter() {
-            let parent_pos = body.parent_index.map(|p| world_positions[p]);
-            world_positions.push(
-                body.get_world_position(simulation_time, parent_pos)
-            );
-        }
-
         // ------------ Órbitas ------------
         if show_orbits {
-            for (i, body) in celestial_bodies.iter().enumerate() {
+            for (_i, body) in celestial_bodies.iter().enumerate() {
                 if body.body_type == CelestialType::Asteroid {
                     continue;
                 }
@@ -366,12 +397,15 @@ fn main() {
             }
         }
 
-        // =====================================================================
-        // =================== SECCIÓN REEMPLAZADA (FIX) ======================
-        // =====================================================================
+        // ------------ Efecto de Warp (ANTES de actualizar textura) ------------
+        warp_effect.render(&mut framebuffer);
 
         // ===== ACTUALIZAR TEXTURA (ANTES DE begin_drawing) =====
         texture.update_texture(framebuffer.as_bytes()).ok();
+
+        if show_minimap {
+            minimap.handle_input(&rl);
+        }
 
         // ===== CALCULAR VARIABLES PARA UI =====
         let speed = camera.get_effective_speed();
@@ -390,26 +424,6 @@ fn main() {
         // =====================================================================
 
         let mut d = rl.begin_drawing(&thread);
-
-        // Información de cámara
-        if camera.third_person {
-            d.draw_text(
-                &format!("Cámara: Dist {:.1} | Alt {:.1}", 
-                    camera.camera_distance, camera.camera_height),
-                10, 
-                180, 
-                14, 
-                raylib::color::Color::GRAY
-            );
-            
-            d.draw_text(
-                "PgUp/PgDn: Altura cámara | Scroll: Distancia",
-                10,
-                HEIGHT as i32 - 45,
-                12,
-                raylib::color::Color::DARKGRAY
-            );
-        }
 
         d.clear_background(Color::BLACK.to_raylib());
         d.draw_texture(&texture, 0, 0, raylib::color::Color::WHITE);
@@ -436,6 +450,41 @@ fn main() {
             &format!("Tiempo: {:.1}x", current_time_scale / time_scale),
             10, 100, 16, raylib::color::Color::SKYBLUE
         );
+
+        d.draw_text(
+            "[ / ] Zoom | L Labels | K Dist | M Toggle",
+            WIDTH as i32 - 250,
+            HEIGHT as i32 - 25,
+            12,
+            raylib::color::Color::new(150, 150, 180, 200),
+        );
+
+        // ----- Advertencia de colisión -----
+        if let Some((idx, distance, severity)) = camera.get_collision_warning(&collision_data) {
+            let body = &celestial_bodies[idx];
+            let color = match severity {
+                "CRÍTICA" => raylib::color::Color::RED,
+                "ALTA" => raylib::color::Color::ORANGE,
+                _ => raylib::color::Color::YELLOW,
+            };
+            
+            d.draw_text(
+                &format!("⚠ COLISIÓN {} - {}", severity, body.name),
+                WIDTH as i32 / 2 - 150,
+                30,
+                20,
+                color
+            );
+            
+            d.draw_text(
+                &format!("Distancia: {:.0}u (Mín: {:.0}u)", 
+                    distance, body.radius * 2.5),
+                WIDTH as i32 / 2 - 150,
+                55,
+                16,
+                color
+            );
+        }
 
         // ----- Info del cuerpo más cercano -----
         if let Some((idx, distance)) = nearest_body {
@@ -475,14 +524,16 @@ fn main() {
         }
 
         // ----- Minimapa -----
-        if show_minimap {
-            GameUI::draw_minimap(
+        if show_minimap {      
+            minimap.render(
                 &mut d,
                 WIDTH as i32,
                 HEIGHT as i32,
                 &world_positions,
                 &celestial_bodies,
                 &camera.position,
+                &camera.forward,
+                frame_time,
             );
         }
 

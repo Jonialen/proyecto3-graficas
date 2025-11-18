@@ -585,7 +585,6 @@ impl Renderer {
             return;
         }
 
-        // ✅ VALIDAR que los vértices estén dentro del rango visible
         if v0.depth > 1.0 || v1.depth > 1.0 || v2.depth > 1.0 {
             return;
         }
@@ -615,10 +614,8 @@ impl Renderer {
                 );
 
                 if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
-                    // ✅ Calcular profundidad interpolada
                     let _depth = w0 * v0.depth + w1 * v1.depth + w2 * v2.depth;
                     
-                    // ✅ Solo renderizar si está ADELANTE de lo que hay
                     let index = y * framebuffer.width + x;
                     
                     // Si hay algo muy cerca (depth muy bajo), no sobrescribir
@@ -643,7 +640,6 @@ impl Renderer {
 
                     let color = shader.fragment(&world_pos, &world_normal, time);
                     
-                    // ✅ Escribir con alpha blending suave
                     let idx = index * 4;
                     let alpha = 0.95; // 95% nave, 5% fondo
                     
@@ -655,7 +651,6 @@ impl Renderer {
                         + framebuffer.buffer[idx + 2] as f32 * (1.0 - alpha)) as u8;
                     framebuffer.buffer[idx + 3] = 255;
                     
-                    // ✅ NO actualizar z-buffer para permitir que otros objetos se dibujen normalmente
                 }
             }
         }

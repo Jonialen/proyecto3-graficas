@@ -4,277 +4,644 @@ use super::noise::*;
 use super::utils::*;
 
 /// Trait para shaders de planetas
+// shaders/planet_shaders.rs (VERSIÓN MEJORADA)
 pub trait PlanetShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color;
 }
 
-// =================== MERCURIO ===================
+// =================== SOL (MEJORADO) ===================
+pub struct ClassicSunShader;
+
+impl PlanetShader for ClassicSunShader {
+    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+        let normalized_pos = pos.normalize();
+
+        // Turbulencia multi-capa más compleja
+        let turb1 = turbulence(normalized_pos * 2.0 + Vec3::new(time * 0.1, 0.0, 0.0), 4, 0);
+        let turb2 = turbulence(normalized_pos * 5.0 + Vec3::new(0.0, time * 0.15, 0.0), 3, 0);
+        let turb_combined = turb1 * 0.6 + turb2 * 0.4;
+
+        // Manchas solares realistas
+        let spot_noise = cellular_noise(
+            normalized_pos.x * 6.0 + time * 0.05,
+            normalized_pos.y * 6.0,
+            normalized_pos.z * 6.0
+        );
+        let solar_spots = smoothstep(0.7, 0.85, spot_noise) * 0.4;
+
+        // Temperatura variable con zonas calientes y frías
+        let base_temp = 0.75 + turb_combined * 0.2 - solar_spots;
+        let temp_color = temperature_to_color(base_temp.clamp(0.0, 1.0));
+
+        // Pulsación sutil
+        let pulse = pulse(time, 1.5, 0.92, 1.08);
+
+        // Emisión intensa
+        let emission = temp_color * (2.2 + turb_combined * 0.8) * pulse;
+
+        // Corona solar (efecto Fresnel mejorado)
+        let view_dir = Vec3::new(0.0, 0.0, 1.0);
+        let fresnel_val = fresnel(&view_dir, normal, 2.5);
+        let corona_color = Vec3::new(1.0, 0.85, 0.4);
+        let corona = corona_color * fresnel_val * 1.2;
+
+        // Protuberancias solares en los bordes
+        let prominence = fresnel_val * turb1 * 0.8;
+        let prominence_color = Vec3::new(1.0, 0.3, 0.0) * prominence;
+
+        let final_color = emission + corona + prominence_color;
+        Color::from_vec3(final_color)
+    }
+}
+
+// =================== MERCURIO (MEJORADO) ===================
 pub struct MercuryShader;
 
 impl PlanetShader for MercuryShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
         let normalized_pos = pos.normalize();
 
-        // Superficie crateada y árida
-        let crater_noise = turbulence(normalized_pos * 12.0, 4, 0);
-        let crater_factor = smoothstep(0.65, 0.75, crater_noise);
+        // Cráteres de impacto multi-escala
+        let large_craters = cellular_noise(
+            normalized_pos.x * 8.0,
+            normalized_pos.y * 8.0,
+            normalized_pos.z * 8.0
+        );
+        let small_craters = cellular_noise(
+            normalized_pos.x * 25.0,
+            normalized_pos.y * 25.0,
+            normalized_pos.z * 25.0
+        );
+        let crater_pattern = large_craters * 0.7 + small_craters * 0.3;
 
-        let base_color = Vec3::new(0.5, 0.45, 0.4); // Gris rocoso
-        let crater_color = Vec3::new(0.35, 0.3, 0.28);
-        let surface_color = mix_vec3(base_color, crater_color, crater_factor * 0.6);
+        // Variación de color basada en composición
+        let composition = perlin_noise(
+            normalized_pos.x * 3.0,
+            normalized_pos.y * 3.0,
+            normalized_pos.z * 3.0
+        );
 
-        // Iluminación intensa (cerca del sol)
-        let light_dir = Vec3::new(1.0, 0.5, 1.0).normalize();
-        let diffuse = normal.dot(&light_dir).max(0.0) * 0.8 + 0.2;
+        let base_gray = Vec3::new(0.45, 0.42, 0.38);
+        let dark_gray = Vec3::new(0.30, 0.28, 0.25);
+        let light_gray = Vec3::new(0.55, 0.52, 0.48);
 
-        Color::from_vec3(surface_color * diffuse * 1.1)
+        let surface_color = if crater_pattern > 0.6 {
+            mix_vec3(dark_gray, base_gray, (crater_pattern - 0.6) * 2.5)
+        } else {
+            mix_vec3(base_gray, light_gray, composition * 0.4)
+        };
+
+        // Polvo fino (ruido de alta frecuencia)
+        let dust = perlin_noise(
+            normalized_pos.x * 40.0,
+            normalized_pos.y * 40.0,
+            normalized_pos.z * 40.0
+        ) * 0.1;
+
+        // Iluminación intensa del Sol cercano
+        let light_dir = Vec3::new(1.0, 0.4, 0.8).normalize();
+        let n_dot_l = normal.dot(&light_dir).max(0.0);
+        
+        // Terminator más suave
+        let diffuse = smoothstep(-0.1, 0.3, n_dot_l) * 0.9 + 0.1;
+
+        let final_color = (surface_color + Vec3::new(dust, dust, dust)) * diffuse * 1.2;
+        Color::from_vec3(final_color)
     }
 }
 
-// =================== VENUS ===================
+// =================== VENUS (MEJORADO) ===================
 pub struct VenusShader;
 
 impl PlanetShader for VenusShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = pos.normalize();
 
-        // Atmósfera densa con nubes de ácido sulfúrico
-        let cloud_layer1 = turbulence(normalized_pos * 4.0 + Vec3::new(time * 0.05, 0.0, 0.0), 3, 1);
-        let cloud_layer2 = turbulence(normalized_pos * 6.0 - Vec3::new(time * 0.08, time * 0.03, 0.0), 4, 1);
+        // Múltiples capas de nubes a diferentes alturas
+        let high_clouds = simplex_noise(
+            normalized_pos.x * 3.0 + time * 0.08,
+            normalized_pos.y * 3.0,
+            normalized_pos.z * 3.0 + time * 0.05
+        );
+        
+        let mid_clouds = simplex_noise(
+            normalized_pos.x * 5.0 - time * 0.12,
+            normalized_pos.y * 5.0 + time * 0.06,
+            normalized_pos.z * 5.0
+        );
+        
+        let low_clouds = turbulence(
+            normalized_pos * 7.0 + Vec3::new(time * 0.15, -time * 0.08, 0.0),
+            3,
+            1
+        );
 
-        let cloud_pattern = (cloud_layer1 + cloud_layer2) * 0.5;
+        // Combinación de capas
+        let cloud_pattern = high_clouds * 0.4 + mid_clouds * 0.35 + low_clouds * 0.25;
 
-        // Colores amarillentos/anaranjados característicos de Venus
-        let base_color = Vec3::new(0.9, 0.85, 0.6);
-        let cloud_color = Vec3::new(0.95, 0.8, 0.5);
-        let atmosphere_color = mix_vec3(base_color, cloud_color, cloud_pattern);
+        // Variación de temperatura atmosférica
+        let temp_variation = perlin_noise(
+            normalized_pos.x * 2.0,
+            normalized_pos.y * 2.0 + time * 0.02,
+            normalized_pos.z * 2.0
+        );
 
-        // Iluminación suave por la atmósfera densa
+        // Colores atmosféricos
+        let base_yellow = Vec3::new(0.95, 0.88, 0.60);
+        let bright_yellow = Vec3::new(1.0, 0.92, 0.65);
+        let orange_tint = Vec3::new(0.98, 0.80, 0.50);
+        
+        let color = mix_vec3(
+            mix_vec3(base_yellow, bright_yellow, cloud_pattern),
+            orange_tint,
+            temp_variation * 0.3
+        );
+
+        // Iluminación atmosférica suave
         let light_dir = Vec3::new(1.0, 0.3, 1.0).normalize();
-        let diffuse = normal.dot(&light_dir).abs() * 0.5 + 0.5;
+        let n_dot_l = normal.dot(&light_dir);
+        
+        // Subsurface scattering simulado
+        let subsurface = smoothstep(-0.3, 0.5, n_dot_l) * 0.6 + 0.4;
+        
+        // Glow atmosférico en los bordes
+        let view_dir = Vec3::new(0.0, 0.0, 1.0);
+        let atmosphere_glow = fresnel(&view_dir, normal, 3.0) * 0.3;
+        let glow_color = Vec3::new(1.0, 0.85, 0.55);
 
-        Color::from_vec3(atmosphere_color * diffuse)
+        let final_color = color * subsurface + glow_color * atmosphere_glow;
+        Color::from_vec3(final_color)
     }
 }
 
-// =================== TIERRA ===================
+// =================== TIERRA (MEJORADA) ===================
 pub struct EarthShader;
 
 impl PlanetShader for EarthShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = pos.normalize();
 
-        // Continentes y océanos
-        let height = normalized_pos.y;
-        let continent_noise = turbulence(normalized_pos * 3.0, 3, 0);
+        // Continentes y océanos con mejor definición
+        let continent_noise = turbulence(normalized_pos * 4.0, 4, 0);
+        let coastal_detail = perlin_noise(
+            normalized_pos.x * 12.0,
+            normalized_pos.y * 12.0,
+            normalized_pos.z * 12.0
+        );
 
-        let base_color = if continent_noise > 0.5 {
-            // Tierra
-            if height > 0.5 {
-                Vec3::new(0.7, 0.65, 0.5) // Montañas
-            } else if height > 0.2 {
-                Vec3::new(0.3, 0.6, 0.2) // Bosques
+        let is_land = continent_noise > 0.48;
+        let coastal_blend = smoothstep(0.45, 0.51, continent_noise + coastal_detail * 0.1);
+
+        // Variación de elevación en tierra
+        let elevation = turbulence(normalized_pos * 6.0, 3, 0);
+        let latitude = normalized_pos.y;
+
+        let ocean_deep = Vec3::new(0.05, 0.15, 0.35);
+        let ocean_shallow = Vec3::new(0.15, 0.35, 0.55);
+        let beach = Vec3::new(0.75, 0.70, 0.55);
+        let plains = Vec3::new(0.35, 0.55, 0.25);
+        let forest = Vec3::new(0.20, 0.45, 0.15);
+        let mountain = Vec3::new(0.50, 0.50, 0.48);
+        let snow = Vec3::new(0.90, 0.90, 0.95);
+
+        let base_color = if is_land {
+            // Biomas terrestres
+            if latitude.abs() > 0.65 || elevation > 0.75 {
+                mix_vec3(mountain, snow, smoothstep(0.7, 0.8, elevation))
+            } else if elevation > 0.6 {
+                mountain
+            } else if latitude.abs() < 0.3 && elevation < 0.55 {
+                forest // Bosques tropicales
             } else {
-                Vec3::new(0.6, 0.7, 0.4) // Planicies
+                plains
             }
         } else {
-            // Océano
-            Vec3::new(0.1, 0.3, 0.6)
+            // Profundidad oceánica
+            mix_vec3(ocean_deep, ocean_shallow, coastal_blend)
         };
 
-        // Nubes animadas
-        let cloud_pattern = turbulence(
-            normalized_pos * 8.0 + Vec3::new(time * 0.02, 0.0, time * 0.01),
-            3,
-            1,
-        );
-        let clouds = smoothstep(0.6, 0.7, cloud_pattern);
-        let cloud_color = Vec3::new(1.0, 1.0, 1.0);
+        // Costa/playas
+        let shore = smoothstep(0.47, 0.49, continent_noise);
+        let color_with_shore = mix_vec3(base_color, beach, shore * (1.0 - coastal_blend));
 
-        let color_with_clouds = mix_vec3(base_color, cloud_color, clouds * 0.8);
+        // Sistema de nubes mejorado
+        let cloud_layer1 = turbulence(
+            normalized_pos * 8.0 + Vec3::new(time * 0.03, 0.0, time * 0.015),
+            4,
+            1
+        );
+        let cloud_layer2 = simplex_noise(
+            normalized_pos.x * 15.0 + time * 0.05,
+            normalized_pos.y * 15.0,
+            normalized_pos.z * 15.0 + time * 0.025
+        );
+        
+        let clouds = smoothstep(0.58, 0.72, cloud_layer1 * 0.7 + cloud_layer2 * 0.3);
+        let cloud_color = Vec3::new(1.0, 1.0, 1.0);
+        let color_with_clouds = mix_vec3(color_with_shore, cloud_color, clouds * 0.85);
 
         // Iluminación
-        let light_dir = Vec3::new(1.0, 0.5, 1.0).normalize();
-        let diffuse = normal.dot(&light_dir).max(0.0) * 0.7 + 0.3;
+        let light_dir = Vec3::new(1.0, 0.4, 0.8).normalize();
+        let n_dot_l = normal.dot(&light_dir).max(0.0);
+        let diffuse = n_dot_l * 0.75 + 0.25;
 
         // Especular en océanos
-        let specular = if continent_noise <= 0.5 {
-            let view_dir = Vec3::new(0.0, 0.0, 1.0);
+        let view_dir = Vec3::new(0.0, 0.0, 1.0);
+        let specular = if !is_land && clouds < 0.3 {
             let half_vec = (light_dir + view_dir).normalize();
-            normal.dot(&half_vec).max(0.0).powf(32.0) * 0.4
+            normal.dot(&half_vec).max(0.0).powf(64.0) * 0.6 * (1.0 - clouds)
         } else {
             0.0
         };
 
-        let final_color = color_with_clouds * diffuse + Vec3::new(1.0, 1.0, 1.0) * specular;
+        // Atmósfera azul en los bordes
+        let atmosphere = fresnel(&view_dir, normal, 3.0);
+        let atmosphere_color = Vec3::new(0.3, 0.5, 0.8) * atmosphere * 0.4;
+
+        let final_color = color_with_clouds * diffuse 
+            + Vec3::new(1.0, 1.0, 1.0) * specular
+            + atmosphere_color;
+            
         Color::from_vec3(final_color)
     }
 }
 
-// =================== MARTE ===================
+// =================== MARTE (MEJORADO) ===================
 pub struct MarsShader;
 
 impl PlanetShader for MarsShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
+    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = pos.normalize();
 
-        // Superficie rojiza característica
-        let terrain_noise = turbulence(normalized_pos * 5.0, 4, 0);
-        
-        let base_red = Vec3::new(0.7, 0.3, 0.2);
-        let dark_red = Vec3::new(0.5, 0.2, 0.15);
-        let base_color = mix_vec3(base_red, dark_red, terrain_noise * 0.5);
+        // Terreno marciano estratificado
+        let large_terrain = turbulence(normalized_pos * 3.0, 4, 0);
+        let medium_terrain = turbulence(normalized_pos * 8.0, 3, 0);
+        let fine_dust = perlin_noise(
+            normalized_pos.x * 30.0,
+            normalized_pos.y * 30.0,
+            normalized_pos.z * 30.0
+        );
+
+        // Colores característicos de Marte
+        let rust_red = Vec3::new(0.70, 0.30, 0.20);
+        let dark_red = Vec3::new(0.50, 0.22, 0.15);
+        let orange_sand = Vec3::new(0.75, 0.45, 0.25);
+        let dark_rock = Vec3::new(0.35, 0.25, 0.20);
+
+        // Mezcla de colores basada en el terreno
+        let terrain_color = if large_terrain > 0.6 {
+            mix_vec3(dark_rock, rust_red, (large_terrain - 0.6) * 2.5)
+        } else if large_terrain > 0.4 {
+            mix_vec3(rust_red, orange_sand, (large_terrain - 0.4) * 5.0)
+        } else {
+            mix_vec3(dark_red, rust_red, large_terrain * 2.5)
+        };
+
+        // Dunas y arena
+        let dune_pattern = (normalized_pos.x * 20.0 + normalized_pos.z * 15.0).sin() * 0.5 + 0.5;
+        let sandy_areas = smoothstep(0.45, 0.55, medium_terrain);
+        let surface = mix_vec3(terrain_color, orange_sand, sandy_areas * dune_pattern * 0.4);
 
         // Casquetes polares
-        let polar_ice = smoothstep(0.7, 0.85, normalized_pos.y.abs());
-        let ice_color = Vec3::new(0.9, 0.9, 0.95);
-        let surface_color = mix_vec3(base_color, ice_color, polar_ice * 0.7);
+        let latitude = normalized_pos.y;
+        let polar_ice = smoothstep(0.72, 0.88, latitude.abs());
+        let ice_color = Vec3::new(0.92, 0.90, 0.95);
+        let color_with_ice = mix_vec3(surface, ice_color, polar_ice * 0.8);
 
         // Cráteres
-        let crater_noise = turbulence(normalized_pos * 15.0, 3, 0);
-        let crater_factor = smoothstep(0.7, 0.8, crater_noise);
-        let cratered_color = mix_vec3(surface_color, surface_color * 0.6, crater_factor * 0.4);
+        let crater_noise = cellular_noise(
+            normalized_pos.x * 12.0,
+            normalized_pos.y * 12.0,
+            normalized_pos.z * 12.0
+        );
+        let craters = smoothstep(0.75, 0.85, crater_noise);
+        let final_surface = mix_vec3(color_with_ice, color_with_ice * 0.65, craters * 0.3);
+
+        // Tormentas de polvo (opcional, animadas)
+        let dust_storm = simplex_noise(
+            normalized_pos.x * 5.0 + time * 0.1,
+            normalized_pos.y * 5.0,
+            normalized_pos.z * 5.0 + time * 0.08
+        );
+        let storm_opacity = smoothstep(0.7, 0.8, dust_storm) * 0.2;
+        let storm_color = Vec3::new(0.85, 0.55, 0.35);
+        let color_with_storm = mix_vec3(final_surface, storm_color, storm_opacity);
 
         // Iluminación
-        let light_dir = Vec3::new(1.0, 0.5, 1.0).normalize();
-        let diffuse = normal.dot(&light_dir).max(0.0) * 0.7 + 0.3;
+        let light_dir = Vec3::new(1.0, 0.4, 0.8).normalize();
+        let n_dot_l = normal.dot(&light_dir).max(0.0);
+        let diffuse = n_dot_l * 0.75 + 0.25;
 
-        Color::from_vec3(cratered_color * diffuse)
+        // Polvo atmosférico añade tinte rojizo
+        let dust_scatter = fine_dust * 0.15;
+        
+        let final_color = (color_with_storm + Vec3::new(dust_scatter, 0.0, 0.0)) * diffuse;
+        Color::from_vec3(final_color)
     }
 }
 
-// =================== JÚPITER ===================
+// =================== JÚPITER (MEJORADO) ===================
 pub struct JupiterShader;
 
 impl PlanetShader for JupiterShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = pos.normalize();
-
-        // Bandas atmosféricas
         let latitude = normalized_pos.y;
-        let band_count = 14.0;
-        let band = ((latitude + 1.0) * 0.5 * band_count).floor();
-        
-        let band_colors = [
-            Vec3::new(0.8, 0.7, 0.6),
-            Vec3::new(0.9, 0.8, 0.7),
-            Vec3::new(0.7, 0.6, 0.5),
-            Vec3::new(0.85, 0.75, 0.65),
-        ];
-        let base_color = band_colors[band as usize % band_colors.len()];
-
-        // Turbulencia atmosférica
         let longitude = normalized_pos.z.atan2(normalized_pos.x);
-        let turb = simplex_noise(
-            longitude * 10.0 + time * 0.3,
-            latitude * 8.0,
-            time * 0.1,
+
+        // Bandas atmosféricas realistas
+        let band_count = 16.0;
+        let band_position = (latitude + 1.0) * 0.5;
+        let band_index = (band_position * band_count).floor();
+        
+        // Colores de las bandas (alternar claros y oscuros)
+        let light_band = Vec3::new(0.88, 0.80, 0.70);
+        let dark_band = Vec3::new(0.72, 0.62, 0.52);
+        let cream_band = Vec3::new(0.92, 0.85, 0.75);
+        let brown_band = Vec3::new(0.65, 0.55, 0.45);
+
+        let band_color = match (band_index as i32) % 4 {
+            0 => light_band,
+            1 => dark_band,
+            2 => cream_band,
+            _ => brown_band,
+        };
+
+        // Transición suave entre bandas
+        let band_transition = smoothstep(
+            band_index / band_count,
+            (band_index + 1.0) / band_count,
+            band_position
         );
-        let turbulent_color = mix_vec3(base_color, base_color * 1.15, turb * 0.3);
+        let next_band_color = match ((band_index as i32) + 1) % 4 {
+            0 => light_band,
+            1 => dark_band,
+            2 => cream_band,
+            _ => brown_band,
+        };
+        let base_color = mix_vec3(band_color, next_band_color, band_transition);
 
-        // Gran Mancha Roja
-        let spot_center = Vec3::new(0.5, -0.15, 0.0).normalize();
+        // Turbulencia atmosférica compleja
+        let turb1 = simplex_noise(
+            longitude * 12.0 + time * 0.4,
+            latitude * 10.0,
+            time * 0.15
+        );
+        let turb2 = turbulence(
+            Vec3::new(longitude * 20.0, latitude * 15.0, time * 0.2),
+            3,
+            1
+        );
+        let turbulence_pattern = turb1 * 0.6 + turb2 * 0.4;
+
+        // Vórtices y remolinos
+        let vortex = cellular_noise(
+            longitude * 8.0 + turbulence_pattern * 2.0,
+            latitude * 8.0,
+            time * 0.1
+        );
+        let vortex_color = mix_vec3(base_color, base_color * 1.2, vortex * 0.3);
+
+        // Gran Mancha Roja (más grande y detallada)
+        let spot_center = Vec3::new(0.5, -0.18, 0.0).normalize();
         let dist_to_spot = (normalized_pos - spot_center).magnitude();
-        let spot_factor = smoothstep(0.3, 0.15, dist_to_spot);
-        let spot_color = Vec3::new(0.8, 0.3, 0.2);
-        let color_with_spot = mix_vec3(turbulent_color, spot_color, spot_factor * 0.8);
+        
+        let spot_radius = 0.12;
+        let spot_core = smoothstep(spot_radius, spot_radius * 0.5, dist_to_spot);
+        let spot_edge = smoothstep(spot_radius * 1.5, spot_radius, dist_to_spot);
+        
+        // Rotación interna de la mancha
+        let spot_rotation = perlin_noise(
+            (normalized_pos - spot_center).x * 15.0 + time * 0.5,
+            (normalized_pos - spot_center).y * 15.0,
+            (normalized_pos - spot_center).z * 15.0
+        );
+        
+        let spot_dark_red = Vec3::new(0.65, 0.25, 0.18);
+        let spot_bright_red = Vec3::new(0.85, 0.35, 0.22);
+        let spot_orange = Vec3::new(0.90, 0.50, 0.28);
+        
+        let spot_color = mix_vec3(
+            mix_vec3(spot_dark_red, spot_bright_red, spot_core),
+            spot_orange,
+            spot_rotation * spot_edge * 0.5
+        );
+        
+        let color_with_spot = mix_vec3(vortex_color, spot_color, spot_edge * 0.9);
 
-        // Iluminación suave
+        // Pequeñas manchas adicionales
+        let small_spots = cellular_noise(
+            normalized_pos.x * 25.0,
+            normalized_pos.y * 25.0,
+            normalized_pos.z * 25.0
+        );
+        let mini_vortices = smoothstep(0.82, 0.88, small_spots) * 0.15;
+        let final_surface = color_with_spot * (1.0 - mini_vortices) 
+            + color_with_spot * 0.7 * mini_vortices;
+
+        // Iluminación atmosférica suave
         let light_dir = Vec3::new(1.0, 0.3, 1.0).normalize();
-        let terminator = smoothstep(-0.2, 0.3, normal.dot(&light_dir));
-        let final_color = color_with_spot * (0.3 + terminator * 0.7);
-
+        let n_dot_l = normal.dot(&light_dir);
+        let terminator = smoothstep(-0.25, 0.4, n_dot_l);
+        
+        // Subsurface scattering simulado
+        let subsurface = smoothstep(-0.4, 0.2, n_dot_l) * 0.3;
+        
+        let final_color = final_surface * (0.25 + terminator * 0.75 + subsurface);
         Color::from_vec3(final_color)
     }
 }
 
-// =================== SATURNO ===================
+// =================== SATURNO (MEJORADO) ===================
 pub struct SaturnShader;
 
 impl PlanetShader for SaturnShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = pos.normalize();
-
-        // Bandas más suaves que Júpiter
         let latitude = normalized_pos.y;
-        let band_pattern = (latitude * 10.0 + time * 0.1).sin() * 0.5 + 0.5;
 
-        let light_band = Vec3::new(0.9, 0.85, 0.7);
-        let dark_band = Vec3::new(0.85, 0.8, 0.65);
-        let base_color = mix_vec3(dark_band, light_band, band_pattern);
+        // Bandas más sutiles y numerosas que Júpiter
+        let band_count = 22.0;
+        let band_pattern = ((latitude + 1.0) * 0.5 * band_count).sin() * 0.5 + 0.5;
 
-        // Turbulencia sutil
-        let turb = simplex_noise(
-            normalized_pos.x * 6.0 + time * 0.2,
-            normalized_pos.y * 6.0,
-            normalized_pos.z * 6.0,
+        let pale_yellow = Vec3::new(0.92, 0.88, 0.72);
+        let cream = Vec3::new(0.90, 0.85, 0.70);
+        let light_tan = Vec3::new(0.88, 0.82, 0.68);
+        
+        let base_color = mix_vec3(
+            mix_vec3(cream, pale_yellow, band_pattern),
+            light_tan,
+            band_pattern * 0.5
         );
-        let surface_color = base_color * (0.9 + turb * 0.2);
 
-        // Iluminación
+        // Turbulencia atmosférica muy sutil
+        let longitude = normalized_pos.z.atan2(normalized_pos.x);
+        let turb = simplex_noise(
+            longitude * 8.0 + time * 0.25,
+            latitude * 10.0,
+            time * 0.1
+        );
+        
+        let surface_color = base_color * (0.92 + turb * 0.16);
+
+        // Hexágono polar norte (simulado)
+        if latitude > 0.75 {
+            let angle = normalized_pos.z.atan2(normalized_pos.x);
+            let hexagon = ((angle * 3.0).cos()).abs();
+            let hex_intensity = smoothstep(0.76, 0.85, latitude) * hexagon;
+            let hex_color = Vec3::new(0.75, 0.70, 0.58);
+            let surface_color = mix_vec3(surface_color, hex_color, hex_intensity * 0.4);
+        }
+
+        // Iluminación suave
         let light_dir = Vec3::new(1.0, 0.3, 1.0).normalize();
-        let diffuse = normal.dot(&light_dir).abs() * 0.6 + 0.4;
+        let n_dot_l = normal.dot(&light_dir);
+        let diffuse = smoothstep(-0.1, 0.5, n_dot_l) * 0.65 + 0.35;
 
         Color::from_vec3(surface_color * diffuse)
     }
 }
 
-// =================== URANO ===================
+// =================== URANO (MEJORADO) ===================
 pub struct UranusShader;
 
 impl PlanetShader for UranusShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
+    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = pos.normalize();
 
-        // Color cian característico (metano en la atmósfera)
-        let base_color = Vec3::new(0.6, 0.8, 0.85);
+        // Color cian característico (metano)
+        let cyan_bright = Vec3::new(0.65, 0.82, 0.88);
+        let cyan_pale = Vec3::new(0.72, 0.85, 0.90);
+        let blue_tint = Vec3::new(0.58, 0.78, 0.85);
 
-        // Variación atmosférica sutil
-        let atmosphere_noise = turbulence(normalized_pos * 4.0, 3, 1);
-        let varied_color = base_color * (0.9 + atmosphere_noise * 0.2);
+        // Atmósfera muy uniforme con variación sutil
+        let atmosphere_noise = simplex_noise(
+            normalized_pos.x * 3.0 + time * 0.05,
+            normalized_pos.y * 3.0,
+            normalized_pos.z * 3.0
+        );
+        
+        let base_color = mix_vec3(
+            mix_vec3(cyan_pale, cyan_bright, atmosphere_noise),
+            blue_tint,
+            atmosphere_noise * 0.3
+        );
 
-        // Iluminación suave
+        // Bandas muy tenues (rotación extrema)
+        let latitude = normalized_pos.x; // Urano está inclinado 98°
+        let faint_bands = (latitude * 15.0 + time * 0.2).sin() * 0.5 + 0.5;
+        let banded_color = base_color * (0.95 + faint_bands * 0.1);
+
+        // Mancha oscura ocasional
+        let dark_spot_center = Vec3::new(0.3, 0.4, 0.0).normalize();
+        let dist_to_spot = (normalized_pos - dark_spot_center).magnitude();
+        let dark_spot = smoothstep(0.2, 0.1, dist_to_spot);
+        let spot_color = Vec3::new(0.45, 0.60, 0.70);
+        let color_with_spot = mix_vec3(banded_color, spot_color, dark_spot * 0.5);
+
+        // Iluminación muy suave (lejos del Sol)
         let light_dir = Vec3::new(1.0, 0.3, 1.0).normalize();
-        let diffuse = normal.dot(&light_dir).abs() * 0.5 + 0.5;
+        let n_dot_l = normal.dot(&light_dir);
+        let diffuse = smoothstep(-0.2, 0.6, n_dot_l) * 0.55 + 0.45;
 
-        Color::from_vec3(varied_color * diffuse)
+        // Glow atmosférico en los bordes
+        let view_dir = Vec3::new(0.0, 0.0, 1.0);
+        let atmosphere_glow = fresnel(&view_dir, normal, 4.0) * 0.25;
+        let glow_color = Vec3::new(0.7, 0.9, 1.0);
+
+        let final_color = color_with_spot * diffuse + glow_color * atmosphere_glow;
+        Color::from_vec3(final_color)
     }
 }
 
-// =================== NEPTUNO ===================
+// =================== NEPTUNO (MEJORADO) ===================
 pub struct NeptuneShader;
 
 impl PlanetShader for NeptuneShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = pos.normalize();
+        let latitude = normalized_pos.y;
+        let longitude = normalized_pos.z.atan2(normalized_pos.x);
 
         // Azul profundo característico
-        let base_color = Vec3::new(0.3, 0.4, 0.8);
+        let deep_blue = Vec3::new(0.25, 0.35, 0.75);
+        let bright_blue = Vec3::new(0.35, 0.50, 0.85);
+        let royal_blue = Vec3::new(0.30, 0.42, 0.80);
 
-        // Tormentas y vórtices
-        let storm_pattern = simplex_noise(
-            normalized_pos.x * 8.0 + time * 0.15,
-            normalized_pos.y * 8.0,
-            normalized_pos.z * 8.0 + time * 0.1,
+        // Tormentas y vórtices complejos
+        let storm_large = simplex_noise(
+            longitude * 5.0 + time * 0.2,
+            latitude * 5.0,
+            time * 0.15
         );
         
-        let storm_color = Vec3::new(0.4, 0.5, 0.9);
-        let atmosphere_color = mix_vec3(base_color, storm_color, storm_pattern * 0.4);
+        let storm_small = turbulence(
+            normalized_pos * 12.0 + Vec3::new(time * 0.3, 0.0, time * 0.25),
+            4,
+            1
+        );
+        
+        let storm_pattern = storm_large * 0.6 + storm_small * 0.4;
+        
+        let storm_color = mix_vec3(
+            mix_vec3(deep_blue, bright_blue, storm_pattern),
+            royal_blue,
+            storm_pattern * 0.5
+        );
 
-        // Gran Mancha Oscura
-        let spot_center = Vec3::new(0.3, 0.2, 0.0).normalize();
+        // Gran Mancha Oscura (análoga a la de Júpiter)
+        let spot_center = Vec3::new(0.35, 0.25, 0.0).normalize();
         let dist_to_spot = (normalized_pos - spot_center).magnitude();
-        let spot_factor = smoothstep(0.25, 0.15, dist_to_spot);
-        let dark_spot = Vec3::new(0.2, 0.25, 0.5);
-        let color_with_spot = mix_vec3(atmosphere_color, dark_spot, spot_factor * 0.6);
+        
+        let spot_outer = smoothstep(0.28, 0.18, dist_to_spot);
+        let spot_inner = smoothstep(0.18, 0.08, dist_to_spot);
+        
+        // Rotación interna de la mancha
+        let spot_swirl = perlin_noise(
+            (normalized_pos - spot_center).x * 20.0 + time * 0.4,
+            (normalized_pos - spot_center).y * 20.0,
+            (normalized_pos - spot_center).z * 20.0
+        );
+        
+        let dark_spot_color = Vec3::new(0.15, 0.20, 0.50);
+        let spot_edge_color = Vec3::new(0.25, 0.35, 0.70);
+        
+        let spot = mix_vec3(
+            dark_spot_color,
+            spot_edge_color,
+            (1.0 - spot_inner) * spot_swirl
+        );
+        
+        let color_with_spot = mix_vec3(storm_color, spot, spot_outer * 0.8);
 
-        // Iluminación
+        // Bandas atmosféricas sutiles
+        let bands = ((latitude * 12.0 + longitude * 2.0 + time * 0.1).sin() * 0.5 + 0.5) * 0.15;
+        let final_surface = color_with_spot * (1.0 - bands) + color_with_spot * 1.2 * bands;
+
+        // Pequeños vórtices adicionales
+        let mini_vortex = cellular_noise(
+            normalized_pos.x * 18.0 + time * 0.15,
+            normalized_pos.y * 18.0,
+            normalized_pos.z * 18.0
+        );
+        let vortex_spots = smoothstep(0.78, 0.85, mini_vortex) * 0.2;
+        let atmosphere = mix_vec3(final_surface, bright_blue, vortex_spots);
+
+        // Iluminación (muy lejos del Sol)
         let light_dir = Vec3::new(1.0, 0.3, 1.0).normalize();
-        let diffuse = normal.dot(&light_dir).abs() * 0.6 + 0.4;
+        let n_dot_l = normal.dot(&light_dir);
+        let diffuse = smoothstep(-0.3, 0.5, n_dot_l) * 0.6 + 0.4;
 
-        Color::from_vec3(color_with_spot * diffuse)
+        // Atmósfera brillante en los bordes
+        let view_dir = Vec3::new(0.0, 0.0, 1.0);
+        let atmosphere_glow = fresnel(&view_dir, normal, 3.5) * 0.3;
+        let glow_color = Vec3::new(0.4, 0.6, 1.0);
+
+        let final_color = atmosphere * diffuse + glow_color * atmosphere_glow;
+        Color::from_vec3(final_color)
     }
 }
+
 
 // =================== GENÉRICOS ===================
 

@@ -375,18 +375,54 @@ impl PlanetShader for RingShader {
 pub struct SimpleMetallicShader;
 
 impl PlanetShader for SimpleMetallicShader {
-    fn fragment(&self, _pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
-        let base_color = Vec3::new(0.7, 0.75, 0.8); // Color gris metálico
+    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+        let normalized_pos = pos.normalize();
         
-        let light_dir = Vec3::new(1.0, 1.0, 1.0).normalize();
-        let diffuse = normal.dot(&light_dir).abs() * 0.6 + 0.4;
+        // Patrón de paneles
+        let panel_noise = perlin_noise(
+            normalized_pos.x * 15.0,
+            normalized_pos.y * 15.0,
+            normalized_pos.z * 15.0,
+        );
         
-        // Especular
+        // Colores metálicos variados
+        let base_metal = Vec3::new(0.65, 0.7, 0.75);
+        let dark_metal = Vec3::new(0.4, 0.45, 0.5);
+        let bright_metal = Vec3::new(0.85, 0.88, 0.9);
+        
+        let surface_color = if panel_noise > 0.6 {
+            mix_vec3(base_metal, bright_metal, (panel_noise - 0.6) * 2.5)
+        } else if panel_noise > 0.4 {
+            base_metal
+        } else {
+            mix_vec3(dark_metal, base_metal, panel_noise * 2.5)
+        };
+        
+        // Iluminación direccional
+        let light_dir = Vec3::new(1.0, 0.5, 1.0).normalize();
+        let n_dot_l = normal.dot(&light_dir).max(0.0);
+        let diffuse = n_dot_l * 0.7 + 0.3;
+        
+        // Especular metálico fuerte
         let view_dir = Vec3::new(0.0, 0.0, 1.0);
         let half_vec = (light_dir + view_dir).normalize();
-        let specular = normal.dot(&half_vec).max(0.0).powf(32.0) * 0.5;
+        let spec_power = normal.dot(&half_vec).max(0.0).powf(64.0);
+        let specular = spec_power * 0.8;
         
-        let final_color = base_color * diffuse + Vec3::new(1.0, 1.0, 1.0) * specular;
+        // Rim lighting (efecto de borde)
+        let rim = fresnel(&view_dir, normal, 3.0);
+        let rim_color = Vec3::new(0.3, 0.5, 0.8) * rim * 0.4;
+        
+        // Luces de navegación pulsantes
+        let nav_light_pattern = ((time * 3.0).sin() * 0.5 + 0.5) 
+            * smoothstep(0.8, 0.9, normalized_pos.y.abs());
+        let nav_light = Vec3::new(0.0, 0.8, 1.0) * nav_light_pattern * 0.3;
+        
+        let final_color = surface_color * diffuse 
+            + Vec3::new(1.0, 1.0, 1.0) * specular 
+            + rim_color
+            + nav_light;
+        
         Color::from_vec3(final_color)
     }
 }

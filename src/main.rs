@@ -391,6 +391,26 @@ fn main() {
 
         let mut d = rl.begin_drawing(&thread);
 
+        // Información de cámara
+        if camera.third_person {
+            d.draw_text(
+                &format!("Cámara: Dist {:.1} | Alt {:.1}", 
+                    camera.camera_distance, camera.camera_height),
+                10, 
+                180, 
+                14, 
+                raylib::color::Color::GRAY
+            );
+            
+            d.draw_text(
+                "PgUp/PgDn: Altura cámara | Scroll: Distancia",
+                10,
+                HEIGHT as i32 - 45,
+                12,
+                raylib::color::Color::DARKGRAY
+            );
+        }
+
         d.clear_background(Color::BLACK.to_raylib());
         d.draw_texture(&texture, 0, 0, raylib::color::Color::WHITE);
 

@@ -18,6 +18,12 @@ pub struct SpaceshipCamera {
     
     pub third_person: bool,
     pub camera_distance: f32,
+    pub camera_height: f32,        // NUEVO
+    pub camera_smoothing: f32,     // NUEVO
+    
+    // Estados suavizados para la cámara
+    smoothed_position: Vec3,       // NUEVO
+    smoothed_rotation: (f32, f32), // NUEVO (yaw, pitch)
 
     pub warp_mode: bool,
     pub warp_multiplier: f32,
@@ -39,7 +45,11 @@ impl SpaceshipCamera {
             yaw: 0.0,
             pitch: 0.0,
             third_person: true,
-            camera_distance: 2.5,
+            camera_distance: 5.0,      // AUMENTADO: era 2.5
+            camera_height: 1.5,        // NUEVO: altura sobre la nave
+            camera_smoothing: 0.15,    // NUEVO: factor de suavizado
+            smoothed_position: position,
+            smoothed_rotation: (0.0, 0.0),
             warp_mode: false,
             warp_multiplier: 1.0,
             hyper_warp: false,
@@ -62,29 +72,29 @@ impl SpaceshipCamera {
     }
 
     pub fn update(&mut self, rl: &RaylibHandle) {
-        // ROTACIÓN CON MOUSE
+        // ROTACIÓN CON MOUSE (más suave)
         if rl.is_mouse_button_down(MouseButton::MOUSE_BUTTON_RIGHT) {
             let mouse_delta = rl.get_mouse_delta();
-            self.yaw += mouse_delta.x * 0.003;
-            self.pitch += mouse_delta.y * 0.003;
-            self.pitch = self.pitch.clamp(-1.5, 1.5);
+            let sensitivity = 0.002; // Reducida sensibilidad
+            
+            self.yaw += mouse_delta.x * sensitivity;
+            self.pitch += mouse_delta.y * sensitivity;
+            self.pitch = self.pitch.clamp(-1.4, 1.4); // Límite más conservador
         }
 
-        // Toggle Warp Mode (F) - x50 (era x10)
+        // Toggle Warp Modes
         if rl.is_key_pressed(KeyboardKey::KEY_F) {
             self.warp_mode = !self.warp_mode;
             self.hyper_warp = false;
             self.warp_multiplier = if self.warp_mode { 50.0 } else { 1.0 };
         }
 
-        // Toggle Hyper Warp Mode (G) - x500 (era x100)
         if rl.is_key_pressed(KeyboardKey::KEY_G) {
             self.hyper_warp = !self.hyper_warp;
             self.warp_mode = false;
             self.warp_multiplier = if self.hyper_warp { 500.0 } else { 1.0 };
         }
 
-        // Ultra Warp (H) - x5000 (era x1000)
         if rl.is_key_pressed(KeyboardKey::KEY_H) {
             let ultra = !self.hyper_warp && !self.warp_mode;
             self.hyper_warp = false;
@@ -92,17 +102,26 @@ impl SpaceshipCamera {
             self.warp_multiplier = if ultra { 5000.0 } else { 1.0 };
         }
 
-        // Toggle tercera persona con C
+        // Toggle tercera persona
         if rl.is_key_pressed(KeyboardKey::KEY_C) {
             self.third_person = !self.third_person;
         }
 
-        // Ajustar distancia de cámara con scroll
+        // Ajustar distancia de cámara
         let wheel = rl.get_mouse_wheel_move();
         if wheel != 0.0 {
-            self.camera_distance = (self.camera_distance - wheel * 0.2).clamp(1.0, 6.0);
+            self.camera_distance = (self.camera_distance - wheel * 0.5).clamp(2.0, 15.0);
+        }
+        
+        // Ajustar altura de cámara con Page Up/Down
+        if rl.is_key_down(KeyboardKey::KEY_PAGE_UP) {
+            self.camera_height = (self.camera_height + 0.05).min(5.0);
+        }
+        if rl.is_key_down(KeyboardKey::KEY_PAGE_DOWN) {
+            self.camera_height = (self.camera_height - 0.05).max(-2.0);
         }
 
+        // MOVIMIENTO
         let mut movement = Vec3::zeros();
 
         if rl.is_key_down(KeyboardKey::KEY_W) {
@@ -125,7 +144,7 @@ impl SpaceshipCamera {
         }
 
         let mut speed_multiplier = if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) {
-            3.0  // SHIFT ahora da x3 (era x2)
+            3.0
         } else {
             1.0
         };
@@ -145,11 +164,22 @@ impl SpaceshipCamera {
 
         self.velocity *= self.drag;
         self.position += self.velocity;
+        
+        // Suavizado de posición para la cámara
+        self.smoothed_position = self.smoothed_position 
+            + (self.position - self.smoothed_position) * self.camera_smoothing;
+        
+        // Suavizado de rotación
+        let yaw_diff = self.yaw - self.smoothed_rotation.0;
+        let pitch_diff = self.pitch - self.smoothed_rotation.1;
+        
+        self.smoothed_rotation.0 += yaw_diff * self.camera_smoothing;
+        self.smoothed_rotation.1 += pitch_diff * self.camera_smoothing;
+        
         self.update_vectors();
     }
 
     pub fn teleport_to(&mut self, target_position: Vec3, offset_distance: f32) {
-        // Distancia segura aumentada proporcionalmente
         let safe_distance = (offset_distance * 3.0).max(100.0);
         
         self.position = target_position + Vec3::new(0.0, safe_distance * 0.3, safe_distance);
@@ -159,13 +189,33 @@ impl SpaceshipCamera {
         self.yaw = direction.z.atan2(direction.x);
         self.pitch = direction.y.asin();
         
+        // Sincronizar valores suavizados al teleportarse
+        self.smoothed_position = self.position;
+        self.smoothed_rotation = (self.yaw, self.pitch);
+        
         self.update_vectors();
     }
 
     pub fn get_view_matrix(&self) -> Mat4 {
         if self.third_person {
-            let camera_pos = self.position - self.forward * self.camera_distance + self.up * 0.5;
-            look_at(&camera_pos, &self.position, &self.up)
+            // Usar valores suavizados para la cámara
+            let smoothed_forward = Vec3::new(
+                self.smoothed_rotation.0.cos() * self.smoothed_rotation.1.cos(),
+                self.smoothed_rotation.1.sin(),
+                self.smoothed_rotation.0.sin() * self.smoothed_rotation.1.cos(),
+            ).normalize();
+            
+            let smoothed_right = smoothed_forward.cross(&Vec3::y()).normalize();
+            let smoothed_up = smoothed_right.cross(&smoothed_forward).normalize();
+            
+            // Posición de cámara detrás y arriba de la nave
+            let camera_offset = -smoothed_forward * self.camera_distance 
+                + smoothed_up * self.camera_height;
+            
+            let camera_pos = self.smoothed_position + camera_offset;
+            let look_target = self.smoothed_position + smoothed_forward * 2.0;
+            
+            look_at(&camera_pos, &look_target, &smoothed_up)
         } else {
             look_at(&self.position, &self.target, &self.up)
         }
@@ -174,14 +224,17 @@ impl SpaceshipCamera {
     pub fn get_ship_model_matrix(&self, scale: f32) -> Mat4 {
         let mut transform = Mat4::identity();
         
-        transform = nalgebra_glm::translate(&transform, &self.position);
+        // Usar posición suavizada
+        transform = nalgebra_glm::translate(&transform, &self.smoothed_position);
         
-        let rotation_y = self.yaw + std::f32::consts::PI;
+        // Rotación suavizada
+        let rotation_y = self.smoothed_rotation.0 + std::f32::consts::PI;
         transform = nalgebra_glm::rotate(&transform, rotation_y, &Vec3::y());
         
-        let rotation_x = -self.pitch;
+        let rotation_x = -self.smoothed_rotation.1;
         transform = nalgebra_glm::rotate(&transform, rotation_x, &Vec3::x());
         
+        // Escala
         transform = nalgebra_glm::scale(&transform, &Vec3::new(scale, scale, scale));
         
         transform
@@ -213,7 +266,19 @@ impl SpaceshipCamera {
 
     pub fn get_camera_position(&self) -> Vec3 {
         if self.third_person {
-            self.position - self.forward * self.camera_distance + self.up * 0.5
+            let smoothed_forward = Vec3::new(
+                self.smoothed_rotation.0.cos() * self.smoothed_rotation.1.cos(),
+                self.smoothed_rotation.1.sin(),
+                self.smoothed_rotation.0.sin() * self.smoothed_rotation.1.cos(),
+            ).normalize();
+            
+            let smoothed_right = smoothed_forward.cross(&Vec3::y()).normalize();
+            let smoothed_up = smoothed_right.cross(&smoothed_forward).normalize();
+            
+            let camera_offset = -smoothed_forward * self.camera_distance 
+                + smoothed_up * self.camera_height;
+            
+            self.smoothed_position + camera_offset
         } else {
             self.position
         }

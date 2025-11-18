@@ -205,6 +205,13 @@ fn main() {
             500000.0, // CAMBIO: Far plane más razonable
         );
 
+        let projection_matrix_near = perspective(
+            WIDTH as f32 / HEIGHT as f32,
+            60.0_f32.to_radians(),
+            0.1,       // Near plane muy cercano para la nave
+            1000.0,    // Far plane más corto
+        );
+
         // ===== LIMPIAR FRAMEBUFFER =====
         framebuffer.clear(Color::new(5, 5, 15));
 
@@ -328,7 +335,7 @@ fn main() {
                     &SimpleMetallicShader,
                     &ship_model,
                     &view_matrix,
-                    &projection_matrix,
+                    &projection_matrix_near,
                     simulation_time,
                 );
             }

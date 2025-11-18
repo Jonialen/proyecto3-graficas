@@ -201,19 +201,12 @@ fn main() {
         let projection_matrix = perspective(
             WIDTH as f32 / HEIGHT as f32,
             60.0_f32.to_radians(),
-            0.1,
-            500000.0,
+            50.0,      // CAMBIO: Near plane más seguro
+            500000.0, // CAMBIO: Far plane más razonable
         );
 
         // ===== LIMPIAR FRAMEBUFFER =====
         framebuffer.clear(Color::new(5, 5, 15));
-
-        // TEST: Dibujar un cuadrado en el centro para verificar que el framebuffer funciona
-        for y in 350..370 {
-            for x in 630..650 {
-                framebuffer.set_pixel(x, y, Color::new(255, 0, 0), 0.0);
-            }
-        }
 
         // ===== CALCULAR POSICIONES DE CUERPOS =====
         let mut world_positions = Vec::new();
@@ -247,90 +240,83 @@ fn main() {
             }
         }
 
-// ===== RENDERIZAR CUERPOS CELESTES CON LOD =====
-let camera_pos = camera.get_camera_position();
+        // ===== RENDERIZAR CUERPOS CELESTES =====
+        let camera_pos = camera.get_camera_position();
 
-println!("=== Frame {} ===", rl.get_frame_time());
-println!("Total cuerpos: {}", celestial_bodies.len());
-println!("Posición cámara: ({:.1}, {:.1}, {:.1})", camera_pos.x, camera_pos.y, camera_pos.z);
+        for (i, body) in celestial_bodies.iter().enumerate() {
+            let world_pos = world_positions[i];
+            let distance_from_camera = (world_pos - camera_pos).magnitude();
+            
+            // CAMBIO: Culling más permisivo
+            let min_render_distance = body.radius * 1.5;
+            if distance_from_camera < min_render_distance {
+                continue;
+            }
+            
+            // CAMBIO: Frustum culling mejorado
+            if !renderer.is_in_frustum(
+                &world_pos,
+                body.radius,
+                &view_matrix,
+                &projection_matrix,
+            ) {
+                continue;
+            }
+            // ===== SELECCIONAR MALLA LOD =====
+            let lod_mesh = get_sphere_lod(distance_from_camera, body.radius);
 
-for (i, body) in celestial_bodies.iter().enumerate() {
-    let world_pos = world_positions[i];
-    let distance_from_camera = (world_pos - camera_pos).magnitude();
-    
-    println!("  {}: Dist={:.1}, Radius={:.1}", body.name, distance_from_camera, body.radius);
-    
-    // SIMPLE: Solo verificar distancia máxima
-    if distance_from_camera > 500000.0 {
-        println!("    -> Demasiado lejos");
-        continue;
-    }
-    
-    // SIMPLE: Solo evitar estar dentro
-    if distance_from_camera < body.radius * 1.1 {
-        println!("    -> Demasiado cerca");
-        continue;
-    }
-    
-    println!("    -> RENDERIZANDO");
+            // ===== CREAR MATRIZ DE MODELO =====
+            let model_matrix = body.get_model_matrix(simulation_time, world_pos);
 
-    // ===== SELECCIONAR MALLA LOD =====
-    let lod_mesh = get_sphere_lod(distance_from_camera, body.radius);
+            // ===== SELECCIONAR SHADER =====
+            let shader: Box<dyn PlanetShader> = match body.body_type {
+                CelestialType::Star => Box::new(ClassicSunShader),
+                CelestialType::Planet => {
+                    match body.name.as_str() {
+                        "Mercurio" => Box::new(MercuryShader),
+                        "Venus" => Box::new(VenusShader),
+                        "Tierra" => Box::new(EarthShader),
+                        "Marte" => Box::new(MarsShader),
+                        "Júpiter" => Box::new(JupiterShader),
+                        "Saturno" => Box::new(SaturnShader),
+                        "Urano" => Box::new(UranusShader),
+                        "Neptuno" => Box::new(NeptuneShader),
+                        _ => Box::new(RockyPlanet),
+                    }
+                }
+                CelestialType::Moon => Box::new(MoonShader),
+                CelestialType::Ring => Box::new(RingShader),
+            };
 
-    // ===== CREAR MATRIZ DE MODELO =====
-    let model_matrix = body.get_model_matrix(simulation_time, world_pos);
+            // ===== RENDERIZAR MESH =====
+            renderer.render_mesh(
+                &mut framebuffer,
+                lod_mesh,
+                shader.as_ref(),
+                &model_matrix,
+                &view_matrix,
+                &projection_matrix,
+                simulation_time,
+            );
 
-    // ===== SELECCIONAR SHADER =====
-    let shader: Box<dyn PlanetShader> = match body.body_type {
-        CelestialType::Star => Box::new(ClassicSunShader),
-        CelestialType::Planet => {
-            match body.name.as_str() {
-                "Mercurio" => Box::new(MercuryShader),
-                "Venus" => Box::new(VenusShader),
-                "Tierra" => Box::new(EarthShader),
-                "Marte" => Box::new(MarsShader),
-                "Júpiter" => Box::new(JupiterShader),
-                "Saturno" => Box::new(SaturnShader),
-                "Urano" => Box::new(UranusShader),
-                "Neptuno" => Box::new(NeptuneShader),
-                _ => Box::new(RockyPlanet),
+            // ===== RENDERIZAR ANILLOS DE SATURNO =====
+            if body.name == "Saturno" && distance_from_camera < body.radius * 50.0 {
+                let ring_model = nalgebra_glm::rotate(
+                    &model_matrix,
+                    20.0_f32.to_radians(),
+                    &Vec3::new(1.0, 0.0, 0.3),
+                );
+                renderer.render_mesh(
+                    &mut framebuffer,
+                    &ring_mesh,
+                    &RingShader,
+                    &ring_model,
+                    &view_matrix,
+                    &projection_matrix,
+                    simulation_time,
+                );
             }
         }
-        CelestialType::Moon => Box::new(MoonShader),
-        CelestialType::Ring => Box::new(RingShader),
-    };
-
-    // ===== RENDERIZAR MESH =====
-    renderer.render_mesh(
-        &mut framebuffer,
-        lod_mesh,
-        shader.as_ref(),
-        &model_matrix,
-        &view_matrix,
-        &projection_matrix,
-        simulation_time,
-    );
-
-    // ===== RENDERIZAR ANILLOS DE SATURNO =====
-    if body.name == "Saturno" && distance_from_camera < body.radius * 50.0 {
-        println!("    -> Renderizando anillos de Saturno");
-        let ring_model = nalgebra_glm::rotate(
-            &model_matrix,
-            20.0_f32.to_radians(),
-            &Vec3::new(1.0, 0.0, 0.3),
-        );
-        renderer.render_mesh(
-            &mut framebuffer,
-            &ring_mesh,
-            &RingShader,
-            &ring_model,
-            &view_matrix,
-            &projection_matrix,
-            simulation_time,
-        );
-    }
-}
-
         // ===== RENDERIZAR NAVE EN TERCERA PERSONA =====
         if camera.third_person {
             if let Some(ship) = &ship_mesh {

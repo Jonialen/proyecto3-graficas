@@ -70,22 +70,26 @@ impl Framebuffer {
         // IMPORTANTE: Limpiar z-buffer correctamente
         self.zbuffer.fill(1.0); // Usar 1.0 en vez de INFINITY para mejor compatibilidad
     }
-
+    
     #[inline]
     pub fn set_pixel(&mut self, x: usize, y: usize, color: Color, depth: f32) {
         if x >= self.width || y >= self.height {
             return;
         }
 
-        // NUEVO: Validar profundidad antes de escribir
-        if !depth.is_finite() || depth < -1.0 || depth > 1.0 {
+        // CAMBIO: Validación de profundidad más permisiva
+        if !depth.is_finite() || depth < -1.5 || depth > 1.5 {
             return;
         }
 
         let index = y * self.width + x;
 
-        if depth < self.zbuffer[index] {
-            self.zbuffer[index] = depth;
+        // CAMBIO: Usar depth normalizado para comparación
+        let normalized_depth = (depth + 1.0) * 0.5; // Convertir de [-1,1] a [0,1]
+        let stored_depth = self.zbuffer[index];
+
+        if normalized_depth < stored_depth {
+            self.zbuffer[index] = normalized_depth;
             let idx = index * 4;
             self.buffer[idx] = color.r;
             self.buffer[idx + 1] = color.g;
@@ -93,7 +97,6 @@ impl Framebuffer {
             self.buffer[idx + 3] = 255;
         }
     }
-
     pub fn as_bytes(&self) -> &[u8] {
         &self.buffer
     }

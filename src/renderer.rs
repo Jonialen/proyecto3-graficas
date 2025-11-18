@@ -201,27 +201,10 @@ impl Renderer {
         v2: &TransformedVertex,
         shader: &dyn PlanetShader,
         time: f32,
-    ) {
-        // DEBUG: Ver si los vértices llegan aquí
-        static TRIANGLE_COUNT: AtomicU32 = AtomicU32::new(0);
-        let count = TRIANGLE_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
-        if count % 1000 == 0 {
-            println!("Triángulos procesados: {}", count);
-            println!(
-                "  v0: screen=({:.1}, {:.1}) depth={:.3}",
-                v0.screen_pos.x, v0.screen_pos.y, v0.depth
-            );
-            println!(
-                "  v1: screen=({:.1}, {:.1}) depth={:.3}",
-                v1.screen_pos.x, v1.screen_pos.y, v1.depth
-            );
-            println!(
-                "  v2: screen=({:.1}, {:.1}) depth={:.3}",
-                v2.screen_pos.x, v2.screen_pos.y, v2.depth
-            );
-        }
-                
-        if !Self::is_valid_vertex(v0) || !Self::is_valid_vertex(v1) || !Self::is_valid_vertex(v2) {
+    ) {                
+        if !Self::is_valid_vertex(v0) 
+            || !Self::is_valid_vertex(v1) 
+            || !Self::is_valid_vertex(v2) {
             return;
         }
 
@@ -241,10 +224,10 @@ impl Renderer {
         }
 
         // NUEVO: Verificar que los vértices tengan profundidad válida
-        if v0.depth < -1.0 || v0.depth > 1.0 ||
-        v1.depth < -1.0 || v1.depth > 1.0 ||
-        v2.depth < -1.0 || v2.depth > 1.0 {
-            return; // Profundidad fuera de rango, no renderizar
+        if v0.depth < -1.5 || v0.depth > 1.5 ||
+            v1.depth < -1.5 || v1.depth > 1.5 ||
+            v2.depth < -1.5 || v2.depth > 1.5 {
+                return;
         }
 
         let min_x = v0
@@ -288,37 +271,45 @@ impl Renderer {
         }
 
         for y in min_y..=max_y {
-            for x in min_x..=max_x {
-                let p = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+                for x in min_x..=max_x {
+                    let p = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
 
-                let (w0, w1, w2) = barycentric(&p, &v0.screen_pos, &v1.screen_pos, &v2.screen_pos);
+                    let (w0, w1, w2) = barycentric(
+                        &p,
+                        &v0.screen_pos,
+                        &v1.screen_pos,
+                        &v2.screen_pos
+                    );
 
-                if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
-                    let depth = w0 * v0.depth + w1 * v1.depth + w2 * v2.depth;
-                    
-                    // NUEVO: Validación más estricta de profundidad
-                    if !depth.is_finite() || depth < -0.99 || depth > 0.99 {
-                        continue;
-                    }
+                    if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
+                        let depth = w0 * v0.depth + w1 * v1.depth + w2 * v2.depth;
+                        
+                        // CAMBIO: Validación de profundidad más permisiva
+                        if !depth.is_finite() || depth < -1.2 || depth > 1.2 {
+                            continue;
+                        }
 
-                    let world_pos = v0.world_pos * w0 + v1.world_pos * w1 + v2.world_pos * w2;
-                    
-                    // NUEVO: Validar posición del mundo
-                    if !world_pos.x.is_finite() || !world_pos.y.is_finite() || !world_pos.z.is_finite() {
-                        continue;
-                    }
+                        let world_pos = v0.world_pos * w0 
+                            + v1.world_pos * w1 
+                            + v2.world_pos * w2;
+                        
+                        if !world_pos.x.is_finite() 
+                            || !world_pos.y.is_finite() 
+                            || !world_pos.z.is_finite() {
+                            continue;
+                        }
 
-                    let world_normal =
-                        (v0.world_normal * w0 + v1.world_normal * w1 + v2.world_normal * w2)
+                        let world_normal = (v0.world_normal * w0 
+                            + v1.world_normal * w1 
+                            + v2.world_normal * w2)
                             .normalize();
 
-                    let color = shader.fragment(&world_pos, &world_normal, time);
-
-                    framebuffer.set_pixel(x, y, color, depth);
+                        let color = shader.fragment(&world_pos, &world_normal, time);
+                        framebuffer.set_pixel(x, y, color, depth);
+                    }
                 }
             }
-        }
-    }   
+        }   
         
     pub fn is_in_frustum(
         &self,
@@ -335,21 +326,27 @@ impl Renderer {
         
         // CAMBIADO: Permitir objetos grandes detrás de la cámara
         // si parte de ellos podría ser visible
-        if view_pos.z > object_radius {
+        if view_pos.z > object_radius * 2.0 {
             return false;
         }
 
         let w = clip_pos.w;
-        if w <= 0.0 && view_pos.z.abs() > object_radius {
+        // if w <= 0.0 && view_pos.z.abs() > object_radius {
+        if w <= 0.0 {
             return false; // Solo cullear si está completamente detrás
         }
 
         // Margen más generoso para objetos grandes
-        let margin = (object_radius / w.abs()).max(2.0).min(10.0);
+        let screen_size = object_radius / w.abs();
+        let margin = (screen_size * 2.0).max(1.0).min(20.0);
         
-        clip_pos.x.abs() < w.abs() + margin * w.abs()
-            && clip_pos.y.abs() < w.abs() + margin * w.abs()
-            && clip_pos.z > -w.abs() - margin * w.abs()
+        // Verificar si está dentro del frustum con margen
+        let x_test = clip_pos.x.abs() < w.abs() * (1.0 + margin);
+        let y_test = clip_pos.y.abs() < w.abs() * (1.0 + margin);
+        let z_test = clip_pos.z > -w.abs() * (1.0 + margin) 
+            && clip_pos.z < w.abs();
+        
+        x_test && y_test && z_test
     }
 
     // NUEVO: Verificar si un objeto está demasiado cerca de la cámara

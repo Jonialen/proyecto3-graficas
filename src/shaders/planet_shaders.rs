@@ -390,3 +390,50 @@ impl PlanetShader for SimpleMetallicShader {
         Color::from_vec3(final_color)
     }
 }
+
+// =================== ASTEROIDES ===================
+pub struct AsteroidShader;
+
+impl PlanetShader for AsteroidShader {
+    fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
+        let normalized_pos = pos.normalize();
+
+        // Superficie extremadamente rugosa y crateada
+        let rough_noise = turbulence(normalized_pos * 20.0, 4, 0);
+        let crater_detail = turbulence(normalized_pos * 50.0, 3, 2);
+        
+        // Colores rocosos variados (gris, marrón oscuro)
+        let base_gray = Vec3::new(0.35, 0.33, 0.30);
+        let dark_brown = Vec3::new(0.25, 0.22, 0.20);
+        let rust = Vec3::new(0.45, 0.35, 0.30);
+        
+        // Mezclar colores según el ruido
+        let color_mix = if rough_noise > 0.6 {
+            mix_vec3(base_gray, rust, (rough_noise - 0.6) * 2.5)
+        } else if rough_noise > 0.4 {
+            mix_vec3(dark_brown, base_gray, (rough_noise - 0.4) * 5.0)
+        } else {
+            mix_vec3(dark_brown * 0.8, dark_brown, rough_noise * 2.5)
+        };
+
+        // Añadir detalles de cráteres
+        let surface_color = color_mix * (0.7 + crater_detail * 0.6);
+
+        // Iluminación muy contrastada (sin atmósfera)
+        let light_dir = Vec3::new(1.0, 0.5, 1.0).normalize();
+        let n_dot_l = normal.dot(&light_dir).max(0.0);
+        
+        // Lambert + ambient muy bajo (espacio oscuro)
+        let diffuse = n_dot_l * 0.9 + 0.1;
+        
+        // Pequeño especular metálico (minerales)
+        let view_dir = Vec3::new(0.0, 0.0, 1.0);
+        let half_vec = (light_dir + view_dir).normalize();
+        let specular = normal.dot(&half_vec).max(0.0).powf(64.0) * 0.15;
+        
+        let final_color = surface_color * diffuse 
+            + Vec3::new(0.5, 0.5, 0.5) * specular;
+        
+        Color::from_vec3(final_color)
+    }
+}

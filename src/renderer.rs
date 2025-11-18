@@ -372,6 +372,25 @@ impl Renderer {
             8
         }
     }
+
+    pub fn render_line(
+        &self,
+        framebuffer: &mut Framebuffer,
+        start: &Vec3,
+        end: &Vec3,
+        view_matrix: &Mat4,
+        projection_matrix: &Mat4,
+        color: Color,
+    ) {
+        let vp = projection_matrix * view_matrix;
+        
+        if let (Some(p1), Some(p2)) = (
+            self.project_point(start, &vp),
+            self.project_point(end, &vp),
+        ) {
+            self.draw_line(framebuffer, &p1, &p2, color);
+        }
+    }
 }
 
 struct TransformedVertex {

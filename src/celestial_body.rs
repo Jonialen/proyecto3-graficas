@@ -8,6 +8,7 @@ pub enum CelestialType {
     Planet,
     Moon,
     Ring,
+    Asteroid,
 }
 
 /// Parámetros orbitales siguiendo las leyes de Kepler

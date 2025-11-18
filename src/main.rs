@@ -27,6 +27,8 @@ use minimap::Minimap;
 use nalgebra_glm::{Vec3, perspective};
 use raylib::prelude::*;
 
+use crate::celestial_body::CelestialBody;
+
 const WIDTH: usize = 1280;
 const HEIGHT: usize = 720;
 
@@ -125,6 +127,8 @@ fn main() {
     let mut show_orbits = true;
     let mut show_menu = false;
     let time_scale = 0.001;
+    let mut menu_page = 0; // Página actual del menú
+    const ITEMS_PER_PAGE: usize = 10; // Máximo 10 destinos por página (0-9)
 
     println!("=== Sistema iniciado correctamente ===\n");
 
@@ -193,19 +197,31 @@ fn main() {
 
         // ------------ Teleportación ------------
         if show_menu {
-            if rl.is_key_pressed(KeyboardKey::KEY_ZERO) {
-                let target_pos = Vec3::zeros();
-                
-                // ✅ Iniciar warp animado
-                warp_effect.start_warp(camera.position, target_pos, 1.5);
-                
-                ship_trail.clear();
-                show_menu = false;
-                rl.disable_cursor();
+
+            // Filtrar cuerpos no-asteroides
+            let menu_bodies: Vec<(usize, &CelestialBody)> = celestial_bodies
+                .iter()
+                .enumerate()
+                .filter(|(_, body)| body.body_type != CelestialType::Asteroid)
+                .collect();
+
+            let start_idx = menu_page * ITEMS_PER_PAGE;
+            let end_idx = (start_idx + ITEMS_PER_PAGE).min(menu_bodies.len());
+
+            let total_pages = (menu_bodies.len() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
+
+            // Detección de cambio de página
+            if rl.is_key_pressed(KeyboardKey::KEY_RIGHT) && menu_page < total_pages - 1 {
+                menu_page += 1;
             }
-            
-            for i in 1..=9 {
-                let key = match i {
+            if rl.is_key_pressed(KeyboardKey::KEY_LEFT) && menu_page > 0 {
+                menu_page -= 1;
+            }
+
+            // Teleportación con teclas 0–9
+            for key_num in 0..10 {
+                let key = match key_num {
+                    0 => KeyboardKey::KEY_ZERO,
                     1 => KeyboardKey::KEY_ONE,
                     2 => KeyboardKey::KEY_TWO,
                     3 => KeyboardKey::KEY_THREE,
@@ -215,36 +231,39 @@ fn main() {
                     7 => KeyboardKey::KEY_SEVEN,
                     8 => KeyboardKey::KEY_EIGHT,
                     9 => KeyboardKey::KEY_NINE,
-                    _ => KeyboardKey::KEY_ONE,
+                    _ => KeyboardKey::KEY_ZERO,
                 };
 
-                if rl.is_key_pressed(key) && i < celestial_bodies.len() {
-                    let _body = &celestial_bodies[i];
-                    let target = world_positions[i];
-                    
-                    // ✅ Warp animado
-                    warp_effect.start_warp(camera.position, target, 2.0);
-                    
-                    ship_trail.clear();
-                    show_menu = false;
-                    rl.disable_cursor();
+                if rl.is_key_pressed(key) {
+                    let item_idx = start_idx + key_num;
+
+                    if item_idx < end_idx {
+                        let (real_idx, _body) = menu_bodies[item_idx];
+                        let target = world_positions[real_idx];
+
+                        // Iniciar warp animado
+                        warp_effect.start_warp(camera.position, target, 2.0);
+
+                        ship_trail.clear();
+                        show_menu = false;
+                        menu_page = 0; // Resetear página al cerrar
+                        rl.disable_cursor();
+                    }
                 }
             }
-        } 
-        else {
-            // ✅ Actualizar warp
+
+        } else {
+            // Actualizar warp
             if let Some(warp_pos) = warp_effect.update(rl.get_frame_time()) {
                 camera.position = warp_pos;
-                camera.sync_smoothed_position(); // Usar método público
+                camera.sync_smoothed_position();
             }
-            
-            // Solo permitir control manual si no estamos en warp
+
+            // Control manual normal si no estamos en warp
             if !warp_effect.is_active() {
                 camera.update(&rl);
-                
-                // ✅ Sistema de colisión
                 camera.check_collisions(&collision_data);
-                
+
                 if show_trail && !paused {
                     ship_trail.update(camera.position, frame_time);
                 }
@@ -385,20 +404,24 @@ fn main() {
         // ------------ Nave 3ra persona ------------
         if camera.third_person {
             if let Some(ship) = &ship_mesh {
+                // Proyección especial para la nave (near plane muy cercano)
                 let ship_projection = perspective(
                     WIDTH as f32 / HEIGHT as f32,
                     60.0_f32.to_radians(),
-                    0.001,
-                    50.0,
+                    0.01,  // Near plane muy cercano
+                    100.0, // Far plane razonable
                 );
 
-                let ship_scale = camera.get_ship_scale();
+                let ship_scale = 0.35; // Escala fija
                 let ship_model = camera.get_ship_model_matrix_fixed(ship_scale);
 
-                // ✅ Seleccionar método de renderizado según proximidad
+                // ✅ DEBUG: Opcional - imprimir modo de proximidad
+                // println!("Proximity mode: {:?}", proximity_mode);
+
+                // ✅ Seleccionar método según proximidad
                 match proximity_mode {
                     camera::ProximityMode::Critical => {
-                        // MUY CERCA: Renderizar sin z-test (siempre visible)
+                        // MUY CERCA: Overlay puro (siempre visible, con blending)
                         renderer.render_mesh_overlay(
                             &mut framebuffer,
                             ship,
@@ -419,11 +442,11 @@ fn main() {
                             &view_matrix,
                             &ship_projection,
                             simulation_time,
-                            -0.5, // Bias extremo
+                            -0.8, // Bias MUY agresivo
                         );
                     }
                     camera::ProximityMode::Normal => {
-                        // LEJOS: Bias normal
+                        // LEJOS: Renderizado normal con bias ligero
                         renderer.render_mesh_with_bias(
                             &mut framebuffer,
                             ship,
@@ -432,7 +455,7 @@ fn main() {
                             &view_matrix,
                             &ship_projection,
                             simulation_time,
-                            -0.05,
+                            -0.1, // Bias normal
                         );
                     }
                 }
@@ -493,13 +516,13 @@ fn main() {
             10, 100, 16, raylib::color::Color::SKYBLUE
         );
 
-        d.draw_text(
-            "[ / ] Zoom | L Labels | K Dist | M Toggle",
-            WIDTH as i32 - 250,
-            HEIGHT as i32 - 25,
-            12,
-            raylib::color::Color::new(150, 150, 180, 200),
-        );
+        // d.draw_text(
+        //     "[ / ] Zoom | L Labels | K Dist | M Toggle",
+        //     WIDTH as i32 - 250,
+        //     HEIGHT as i32 - 25,
+        //     12,
+        //     raylib::color::Color::new(150, 150, 180, 200),
+        // );
 
         // ----- Advertencia de colisión -----
         if let Some((idx, distance, severity)) = camera.get_collision_warning(&collision_data) {
@@ -590,34 +613,46 @@ fn main() {
 
         // ----- Menú de teleportación -----
         if show_menu {
-            let menu_x = WIDTH as i32 / 2 - 200;
-            let menu_y = HEIGHT as i32 / 2 - 250;
+            // Fondo semitransparente
+            d.draw_rectangle(0, 0, WIDTH as i32, HEIGHT as i32, raylib::color::Color::new(0, 0, 0, 200));
 
-            d.draw_rectangle(menu_x - 10, menu_y - 10, 420, 520, raylib::color::Color::new(0,0,0,220));
-            d.draw_rectangle_lines(menu_x - 10, menu_y - 10, 420, 520, raylib::color::Color::SKYBLUE);
+            // Título
+            d.draw_text("Fast Travel Menu", 40, 40, 32, raylib::color::Color::WHITE);
+            d.draw_text("Presiona 0–9 para viajar • Flechas ← → para cambiar página • ESC para salir", 
+                40, 80, 20, raylib::color::Color::LIGHTGRAY);
 
-            d.draw_text("MENU DE TELEPORTACIÓN", menu_x, menu_y, 20, raylib::color::Color::YELLOW);
-            d.draw_line(menu_x, menu_y + 25, menu_x + 400, menu_y + 25, raylib::color::Color::SKYBLUE);
+            // Construcción del menú filtrado
+            let menu_bodies: Vec<(usize, &CelestialBody)> = celestial_bodies
+                .iter()
+                .enumerate()
+                .filter(|(_, body)| body.body_type != CelestialType::Asteroid)
+                .collect();
 
-            let mut display_index = 0;
 
-            for (i, body) in celestial_bodies.iter().enumerate() {
-                if body.body_type == CelestialType::Asteroid {
-                    continue;
-                }
+            let total_pages = (menu_bodies.len() + ITEMS_PER_PAGE - 1) / ITEMS_PER_PAGE;
+            let start_idx = menu_page * ITEMS_PER_PAGE;
+            let end_idx = (start_idx + ITEMS_PER_PAGE).min(menu_bodies.len());
 
-                let text = if i <= 9 {
-                    format!("{}: {}", i, body.name)
-                } else {
-                    continue;
-                };
+            // Dibujar los ítems visibles
+            let mut y = 140;
+            for (display_idx, item_idx) in (start_idx..end_idx).enumerate() {
+                let (real_idx, body) = menu_bodies[item_idx];
 
-                d.draw_text(&text, menu_x, menu_y + 40 + display_index * 25, 18, raylib::color::Color::WHITE);
-                display_index += 1;
+                // Texto como: 0. Earth
+                let label = format!("{}. {}", display_idx, body.name);
+                d.draw_text(&label, 60, y, 26, raylib::color::Color::WHITE);
+
+                y += 40;
             }
 
-            d.draw_text("Presiona TAB para cerrar", menu_x, menu_y + 480, 16, raylib::color::Color::GRAY);
+            // Indicador de página
+            let page_text = format!("Página {}/{}", menu_page + 1, total_pages);
+            d.draw_text(&page_text, 60, HEIGHT as i32 - 60, 24, raylib::color::Color::YELLOW);
+
+            // Botón de salida
+            d.draw_text("Presiona ESC para cerrar", 60, HEIGHT as i32 - 30, 20, raylib::color::Color::LIGHTGRAY);
         }
+
 
         // ----- Ayuda rápida -----
         let show_help = d.is_key_down(KeyboardKey::KEY_F1);

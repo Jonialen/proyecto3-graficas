@@ -585,6 +585,11 @@ impl Renderer {
             return;
         }
 
+        // ✅ VALIDAR que los vértices estén dentro del rango visible
+        if v0.depth > 1.0 || v1.depth > 1.0 || v2.depth > 1.0 {
+            return;
+        }
+
         let min_x = v0.screen_pos.x.min(v1.screen_pos.x).min(v2.screen_pos.x)
             .floor().max(0.0) as usize;
         let max_x = v0.screen_pos.x.max(v1.screen_pos.x).max(v2.screen_pos.x)
@@ -610,6 +615,17 @@ impl Renderer {
                 );
 
                 if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
+                    // ✅ Calcular profundidad interpolada
+                    let _depth = w0 * v0.depth + w1 * v1.depth + w2 * v2.depth;
+                    
+                    // ✅ Solo renderizar si está ADELANTE de lo que hay
+                    let index = y * framebuffer.width + x;
+                    
+                    // Si hay algo muy cerca (depth muy bajo), no sobrescribir
+                    if framebuffer.zbuffer[index] < -0.9 {
+                        continue;
+                    }
+                    
                     let world_pos = v0.world_pos * w0 
                         + v1.world_pos * w1 
                         + v2.world_pos * w2;
@@ -627,13 +643,19 @@ impl Renderer {
 
                     let color = shader.fragment(&world_pos, &world_normal, time);
                     
-                    // ✅ Escribir sin verificar z-buffer
-                    let index = y * framebuffer.width + x;
+                    // ✅ Escribir con alpha blending suave
                     let idx = index * 4;
-                    framebuffer.buffer[idx] = color.r;
-                    framebuffer.buffer[idx + 1] = color.g;
-                    framebuffer.buffer[idx + 2] = color.b;
+                    let alpha = 0.95; // 95% nave, 5% fondo
+                    
+                    framebuffer.buffer[idx] = (color.r as f32 * alpha 
+                        + framebuffer.buffer[idx] as f32 * (1.0 - alpha)) as u8;
+                    framebuffer.buffer[idx + 1] = (color.g as f32 * alpha 
+                        + framebuffer.buffer[idx + 1] as f32 * (1.0 - alpha)) as u8;
+                    framebuffer.buffer[idx + 2] = (color.b as f32 * alpha 
+                        + framebuffer.buffer[idx + 2] as f32 * (1.0 - alpha)) as u8;
                     framebuffer.buffer[idx + 3] = 255;
+                    
+                    // ✅ NO actualizar z-buffer para permitir que otros objetos se dibujen normalmente
                 }
             }
         }

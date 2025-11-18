@@ -395,18 +395,56 @@ impl SpaceshipCamera {
         transform
     }
 
-     pub fn get_proximity_mode(&self, bodies: &[(Vec3, f32)]) -> ProximityMode {
+    pub fn get_proximity_mode(&self, bodies: &[(Vec3, f32)]) -> ProximityMode {
+        // Buscar el cuerpo más cercano primero
+        let mut closest_distance = f32::INFINITY;
+        let mut closest_radius = 0.0;
+        
         for (body_pos, body_radius) in bodies {
             let distance = (body_pos - self.position).magnitude();
-            let critical_distance = body_radius * 100.0;
-            
-            if distance < critical_distance {
-                return ProximityMode::Critical;
-            } else if distance < critical_distance * 2.0 {
-                return ProximityMode::Close;
+            if distance < closest_distance {
+                closest_distance = distance;
+                closest_radius = *body_radius;
             }
         }
-        ProximityMode::Normal
+        
+        // No considerar objetos muy pequeños para el modo crítico
+        if closest_radius < 10.0 {
+            return ProximityMode::Normal;
+        }
+        
+        // Determinar modo basado en el objeto más cercano
+        let critical_threshold = closest_radius * 5.0;  // Muy cerca
+        let close_threshold = closest_radius * 15.0;     // Relativamente cerca
+        
+        if closest_distance < critical_threshold {
+            ProximityMode::Critical
+        } else if closest_distance < close_threshold {
+            ProximityMode::Close
+        } else {
+            ProximityMode::Normal
+        }
+    }
+
+    // ========== MÉTODO ADICIONAL ==========
+    // Agregar este método para debug (opcional)
+    pub fn get_closest_body_info(&self, bodies: &[(Vec3, f32)]) -> Option<(f32, f32)> {
+        let mut closest_distance = f32::INFINITY;
+        let mut closest_radius = 0.0;
+        
+        for (body_pos, body_radius) in bodies {
+            let distance = (body_pos - self.position).magnitude();
+            if distance < closest_distance {
+                closest_distance = distance;
+                closest_radius = *body_radius;
+            }
+        }
+        
+        if closest_distance < f32::INFINITY {
+            Some((closest_distance, closest_radius))
+        } else {
+            None
+        }
     }
 }
 

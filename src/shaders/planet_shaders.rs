@@ -4,12 +4,13 @@ use super::noise::*;
 use super::utils::*;
 
 /// Trait para shaders de planetas
-// shaders/planet_shaders.rs (VERSIÓN MEJORADA)
 pub trait PlanetShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color;
 }
 
-// =================== SOL (MEJORADO) ===================
+// ===================================================================================
+// ========== SOL (SHADER MEJORADO) ===================
+// ===================================================================================
 pub struct ClassicSunShader;
 
 impl PlanetShader for ClassicSunShader {
@@ -54,7 +55,9 @@ impl PlanetShader for ClassicSunShader {
     }
 }
 
-// =================== MERCURIO (MEJORADO) ===================
+// ===================================================================================
+// ========== MERCURIO ===================
+// ===================================================================================
 pub struct MercuryShader;
 
 impl PlanetShader for MercuryShader {
@@ -110,7 +113,9 @@ impl PlanetShader for MercuryShader {
     }
 }
 
-// =================== VENUS (MEJORADO) ===================
+// ===================================================================================
+// ========== VENUS ===================
+// ===================================================================================
 pub struct VenusShader;
 
 impl PlanetShader for VenusShader {
@@ -174,7 +179,9 @@ impl PlanetShader for VenusShader {
     }
 }
 
-// =================== TIERRA (MEJORADA) ===================
+// ===================================================================================
+// ========== TIERRA ===================
+// ===================================================================================
 pub struct EarthShader;
 
 impl PlanetShader for EarthShader {
@@ -266,7 +273,9 @@ impl PlanetShader for EarthShader {
     }
 }
 
-// =================== MARTE (MEJORADO) ===================
+// ===================================================================================
+// ========== MARTE ===================
+// ===================================================================================
 pub struct MarsShader;
 
 impl PlanetShader for MarsShader {
@@ -340,7 +349,9 @@ impl PlanetShader for MarsShader {
     }
 }
 
-// =================== JÚPITER (MEJORADO) ===================
+// ===================================================================================
+// ========== JÚPITER ===================
+// ===================================================================================
 pub struct JupiterShader;
 
 impl PlanetShader for JupiterShader {
@@ -452,7 +463,9 @@ impl PlanetShader for JupiterShader {
     }
 }
 
-// =================== SATURNO (MEJORADO) ===================
+// ===================================================================================
+// ========== SATURNO ===================
+// ===================================================================================
 pub struct SaturnShader;
 
 impl PlanetShader for SaturnShader {
@@ -482,7 +495,7 @@ impl PlanetShader for SaturnShader {
             time * 0.1
         );
         
-        let surface_color = base_color * (0.92 + turb * 0.16);
+        let mut surface_color = base_color * (0.92 + turb * 0.16);
 
         // Hexágono polar norte (simulado)
         if latitude > 0.75 {
@@ -490,7 +503,7 @@ impl PlanetShader for SaturnShader {
             let hexagon = ((angle * 3.0).cos()).abs();
             let hex_intensity = smoothstep(0.76, 0.85, latitude) * hexagon;
             let hex_color = Vec3::new(0.75, 0.70, 0.58);
-            let surface_color = mix_vec3(surface_color, hex_color, hex_intensity * 0.4);
+            surface_color = mix_vec3(surface_color, hex_color, hex_intensity * 0.4);
         }
 
         // Iluminación suave
@@ -502,7 +515,9 @@ impl PlanetShader for SaturnShader {
     }
 }
 
-// =================== URANO (MEJORADO) ===================
+// ===================================================================================
+// ========== URANO ===================
+// ===================================================================================
 pub struct UranusShader;
 
 impl PlanetShader for UranusShader {
@@ -554,7 +569,9 @@ impl PlanetShader for UranusShader {
     }
 }
 
-// =================== NEPTUNO (MEJORADO) ===================
+// ===================================================================================
+// ========== NEPTUNO ===================
+// ===================================================================================
 pub struct NeptuneShader;
 
 impl PlanetShader for NeptuneShader {
@@ -642,38 +659,102 @@ impl PlanetShader for NeptuneShader {
     }
 }
 
+// ===================================================================================
+// ========== SHADERS ADICIONALES (Cristal, Lava, Hielo, etc.) ===================
+// ===================================================================================
 
-// =================== GENÉRICOS ===================
+/// Planeta Cristalino
+pub struct CrystalPlanet;
 
-/// Planeta rocoso genérico (ya lo tenías)
-pub struct RockyPlanet;
-
-impl PlanetShader for RockyPlanet {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
+impl PlanetShader for CrystalPlanet {
+    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = pos.normalize();
 
-        let height = normalized_pos.y;
-        let base_color = if height > 0.4 {
-            Vec3::new(0.7, 0.5, 0.3)
-        } else if height > 0.0 {
-            Vec3::new(0.4, 0.6, 0.3)
-        } else if height > -0.3 {
-            Vec3::new(0.8, 0.7, 0.5)
-        } else {
-            Vec3::new(0.1, 0.3, 0.6)
-        };
+        // Patrón geométrico hexagonal
+        let hex_x = normalized_pos.x * 8.0;
+        let hex_z = normalized_pos.z * 8.0;
+        let hex_pattern = ((hex_x * 2.0).sin() + (hex_z * 2.0).sin() + ((hex_x + hex_z) * 2.0).sin()) / 3.0;
+        let geo_factor = smoothstep(-0.1, 0.1, hex_pattern);
 
-        let continent_noise = turbulence(normalized_pos * 3.0, 3, 0);
-        let color_variation = mix_vec3(base_color, base_color * 0.8, continent_noise * 0.3);
+        // Color iridiscente que cambia con el tiempo
+        let hue_shift = time * 0.5 + normalized_pos.y * 2.0;
+        let base_hue = (hue_shift % (2.0 * std::f32::consts::PI)) / (2.0 * std::f32::consts::PI);
+        let iridescent_color = hue_to_rgb(base_hue);
 
-        let light_dir = Vec3::new(1.0, 0.5, 1.0).normalize();
-        let diffuse = normal.dot(&light_dir).abs() * 0.6 + 0.4;
+        // Líneas de energía pulsantes
+        let pulse = ((time * 3.0).sin() * 0.5 + 0.5) * 0.3;
+        let energy_lines = ((normalized_pos.y * 20.0 + time * 2.0).sin() * 0.5 + 0.5) * pulse;
+        let pulsing_color = iridescent_color * (1.0 + energy_lines);
 
-        Color::from_vec3(color_variation * diffuse)
+        // Efecto Fresnel
+        let view_dir = Vec3::new(0.0, 0.0, 1.0);
+        let fresnel_power = fresnel(&view_dir, normal, 3.0);
+        let fresnel_color = Vec3::new(0.8, 0.9, 1.0);
+        let final_color = mix_vec3(pulsing_color * (0.5 + geo_factor * 0.5), fresnel_color, fresnel_power * 0.6);
+
+        Color::from_vec3(final_color)
     }
 }
 
-/// Shader para lunas
+/// Planeta de Lava
+pub struct LavaPlanet;
+
+impl PlanetShader for LavaPlanet {
+    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+        let normalized_pos = pos.normalize();
+
+        // Patrón de grietas animadas
+        let crack_pattern = turbulence(normalized_pos * 5.0, 3, 0);
+        let animated_crack = crack_pattern + (time * 0.5).sin() * 0.3;
+        let is_lava = animated_crack > 0.6;
+
+        let base_color = if is_lava {
+            let intensity = (time * 4.0 + crack_pattern * 10.0).sin() * 0.5 + 0.5;
+            mix_vec3(Vec3::new(1.0, 0.3, 0.0), Vec3::new(1.0, 0.8, 0.0), intensity)
+        } else {
+            Vec3::new(0.15, 0.1, 0.08)
+        };
+
+        let light_dir = Vec3::new(1.0, 1.0, 1.0).normalize();
+        let diffuse = normal.dot(&light_dir).abs() * 0.5 + 0.5;
+
+        let final_color = if is_lava {
+            base_color * 1.5
+        } else {
+            base_color * diffuse
+        };
+
+        Color::from_vec3(final_color)
+    }
+}
+
+/// Planeta de Hielo
+pub struct IcePlanet;
+
+impl PlanetShader for IcePlanet {
+    fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
+        let normalized_pos = pos.normalize();
+
+        let ice_pattern = turbulence(normalized_pos * 10.0, 4, 0);
+        let crystal_factor = smoothstep(0.4, 0.6, ice_pattern);
+        let base_color = mix_vec3(Vec3::new(0.7, 0.8, 0.95), Vec3::new(0.5, 0.6, 0.8), crystal_factor);
+
+        let light_dir = Vec3::new(1.0, 1.0, 1.0).normalize();
+        let diffuse = normal.dot(&light_dir).abs() * 0.5 + 0.5;
+        let view_dir = Vec3::new(0.0, 0.0, 1.0);
+        let half_vec = (light_dir + view_dir).normalize();
+        let specular = normal.dot(&half_vec).max(0.0).powf(64.0);
+        let final_color = base_color * diffuse + Vec3::new(1.0, 1.0, 1.0) * specular * 0.8;
+
+        Color::from_vec3(final_color)
+    }
+}
+
+// ===================================================================================
+// ========== GENÉRICOS (Luna, Anillos, Nave, Asteroides) ===================
+// ===================================================================================
+
+/// Shader para Lunas
 pub struct MoonShader;
 
 impl PlanetShader for MoonShader {
@@ -701,7 +782,7 @@ impl PlanetShader for MoonShader {
     }
 }
 
-/// Shader para anillos planetarios
+/// Shader para Anillos Planetarios
 pub struct RingShader;
 
 impl PlanetShader for RingShader {
@@ -731,14 +812,14 @@ impl PlanetShader for RingShader {
         let alpha = alpha_inner * alpha_outer;
 
         if alpha < 0.3 {
-            Color::new(5, 5, 15) // Color del fondo
+            Color::new(5, 5, 15)
         } else {
             Color::from_vec3(lit_color * alpha)
         }
     }
 }
 
-/// Shader metálico simple para la nave
+/// Shader Metálico para la Nave
 pub struct SimpleMetallicShader;
 
 impl PlanetShader for SimpleMetallicShader {
@@ -794,7 +875,7 @@ impl PlanetShader for SimpleMetallicShader {
     }
 }
 
-// =================== ASTEROIDES ===================
+/// Shader para Asteroides
 pub struct AsteroidShader;
 
 impl PlanetShader for AsteroidShader {
@@ -837,6 +918,78 @@ impl PlanetShader for AsteroidShader {
         let final_color = surface_color * diffuse 
             + Vec3::new(0.5, 0.5, 0.5) * specular;
         
+        Color::from_vec3(final_color)
+    }
+}
+
+// ===================================================================================
+// ========== PLANETA ROCOSO GENÉRICO ===================
+// ===================================================================================
+pub struct RockyPlanet;
+
+impl PlanetShader for RockyPlanet {
+    fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
+        let normalized_pos = pos.normalize();
+
+        let height = normalized_pos.y;
+        let base_color = if height > 0.4 {
+            Vec3::new(0.7, 0.5, 0.3)
+        } else if height > 0.0 {
+            Vec3::new(0.4, 0.6, 0.3)
+        } else if height > -0.3 {
+            Vec3::new(0.8, 0.7, 0.5)
+        } else {
+            Vec3::new(0.1, 0.3, 0.6)
+        };
+
+        let continent_noise = turbulence(normalized_pos * 3.0, 3, 0);
+        let color_variation = mix_vec3(base_color, base_color * 0.8, continent_noise * 0.3);
+
+        let light_dir = Vec3::new(1.0, 0.5, 1.0).normalize();
+        let diffuse = normal.dot(&light_dir).abs() * 0.6 + 0.4;
+
+        Color::from_vec3(color_variation * diffuse)
+    }
+}
+
+// ===================================================================================
+// ========== GIGANTE GASEOSO GENÉRICO ===================
+// ===================================================================================
+pub struct GasGiant;
+
+impl PlanetShader for GasGiant {
+    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+        let normalized_pos = pos.normalize();
+        let latitude = normalized_pos.y;
+
+        // Bandas de colores
+        let band_count = 12.0;
+        let band = ((latitude + 1.0) * 0.5 * band_count).floor();
+        let band_colors = [
+            Vec3::new(0.9, 0.7, 0.5),
+            Vec3::new(0.8, 0.5, 0.3),
+            Vec3::new(0.7, 0.4, 0.2),
+            Vec3::new(0.6, 0.3, 0.2),
+        ];
+        let base_color = band_colors[band as usize % band_colors.len()];
+
+        // Turbulencia animada
+        let longitude = normalized_pos.z.atan2(normalized_pos.x) / (2.0 * std::f32::consts::PI);
+        let turb = perlin_noise(longitude * 8.0 + time * 0.3, latitude * 5.0, time * 0.1);
+        let turbulent_color = mix_vec3(base_color, base_color * 1.2, turb * 0.4);
+
+        // Gran mancha
+        let spot_center = Vec3::new(0.5, -0.2, 0.0).normalize();
+        let dist_to_spot = (normalized_pos - spot_center).magnitude();
+        let spot_factor = smoothstep(0.25, 0.15, dist_to_spot);
+        let spot_color = Vec3::new(0.8, 0.2, 0.1);
+        let color_with_spot = mix_vec3(turbulent_color, spot_color, spot_factor * 0.7);
+
+        // Iluminación suave
+        let light_dir = Vec3::new(1.0, 0.3, 1.0).normalize();
+        let terminator = smoothstep(0.0, 0.5, normal.dot(&light_dir).abs());
+        let final_color = color_with_spot * (0.3 + terminator * 0.7);
+
         Color::from_vec3(final_color)
     }
 }

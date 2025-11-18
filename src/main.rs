@@ -46,9 +46,10 @@ fn main() {
     // =================== CARGA DE GEOMETRÍA ===================
     println!("Generando geometría...");
     
-    let sphere_mesh_high = ObjMesh::create_sphere(1.0, 64, 64);
-    let sphere_mesh_medium = ObjMesh::create_sphere(1.0, 32, 32);
-    let sphere_mesh_low = ObjMesh::create_sphere(1.0, 16, 16);
+    let sphere_mesh_high = ObjMesh::create_sphere(1.0, 128, 128);   // Era 64
+    let sphere_mesh_medium = ObjMesh::create_sphere(1.0, 64, 64);   // Era 32
+    let sphere_mesh_low = ObjMesh::create_sphere(1.0, 32, 32);      // Era 16
+    let sphere_mesh_very_low = ObjMesh::create_sphere(1.0, 16, 16);
     let ring_mesh = ObjMesh::create_ring(1.3, 2.0, 100);
 
     println!("Cargando modelo de nave...");
@@ -77,14 +78,20 @@ fn main() {
     };
 
     let get_sphere_lod = |distance: f32, radius: f32| -> &ObjMesh {
-        if distance < radius * 5.0 {
+        let ratio = distance / radius;
+
+        // println!("  LOD: dist={:.0}, radius={:.0}, ratio={:.1}", distance, radius, ratio);
+        
+        if ratio < 10.0 {
             high_quality_sphere.as_ref().unwrap_or(&sphere_mesh_high)
-        } else if distance < radius * 20.0 {
+        } else if ratio < 50.0 {
             &sphere_mesh_high
-        } else if distance < radius * 100.0 {
+        } else if ratio < 200.0 {
             &sphere_mesh_medium
-        } else {
+        } else if ratio < 500.0 {
             &sphere_mesh_low
+        } else {
+            &sphere_mesh_very_low
         }
     };
 
@@ -164,7 +171,6 @@ fn main() {
             );
         }
 
-        // ✅ NUEVO: Preparar datos de colisión (ANTES del manejo de input)
         let collision_data: Vec<(Vec3, f32)> = celestial_bodies
             .iter()
             .enumerate()
@@ -276,7 +282,7 @@ fn main() {
             WIDTH as f32 / HEIGHT as f32,
             60.0_f32.to_radians(), 
             50.0, 
-            500000.0,
+            5000000.0,
         );
         let projection_matrix_near = perspective(
             WIDTH as f32 / HEIGHT as f32,
@@ -342,7 +348,17 @@ fn main() {
                 continue;
             }
 
-            let lod_mesh = get_sphere_lod(dist, body.radius);
+            let lod_mesh = if body.body_type == CelestialType::Planet 
+                && body.body_type != CelestialType::Asteroid {
+                // Planetas principales siempre alta calidad
+                if dist < body.radius * 100.0 {
+                    high_quality_sphere.as_ref().unwrap_or(&sphere_mesh_high)
+                } else {
+                    &sphere_mesh_medium
+                }
+            } else {
+                get_sphere_lod(dist, body.radius)
+            };
             let model_matrix = body.get_model_matrix(simulation_time, world_pos);
 
             let shader: Box<dyn PlanetShader> = match body.body_type {

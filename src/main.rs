@@ -164,13 +164,14 @@ fn main() {
 
         // ------------ Calcular posiciones de cuerpos (MOVER AQUÍ) ------------
         let mut world_positions = Vec::new();
+
         for body in celestial_bodies.iter() {
             let parent_pos = body.parent_index.map(|p| world_positions[p]);
             world_positions.push(
                 body.get_world_position(simulation_time, parent_pos)
             );
         }
-
+        minimap.auto_zoom(&world_positions);
         let collision_data: Vec<(Vec3, f32)> = celestial_bodies
             .iter()
             .enumerate()
@@ -395,7 +396,9 @@ fn main() {
                     20.0_f32.to_radians(),
                     &Vec3::new(1.0, 0.0, 0.3),
                 );
-                renderer.render_mesh(
+                
+                // ✅ Usar render_ring en lugar de render_mesh
+                renderer.render_ring(
                     &mut framebuffer,
                     &ring_mesh,
                     &RingShader,
@@ -420,61 +423,26 @@ fn main() {
         // ------------ Nave 3ra persona ------------
         if camera.third_person {
             if let Some(ship) = &ship_mesh {
-                // Proyección especial para la nave (near plane muy cercano)
                 let ship_projection = perspective(
                     WIDTH as f32 / HEIGHT as f32,
                     60.0_f32.to_radians(),
-                    0.01,  // Near plane muy cercano
-                    100.0, // Far plane razonable
+                    0.01,
+                    100.0,
                 );
 
-                let ship_scale = 0.35; // Escala fija
+                let ship_scale = 0.35;
                 let ship_model = camera.get_ship_model_matrix_fixed(ship_scale);
 
-                // ✅ DEBUG: Opcional - imprimir modo de proximidad
-                // println!("Proximity mode: {:?}", proximity_mode);
-
-                // ✅ Seleccionar método según proximidad
-                match proximity_mode {
-                    camera::ProximityMode::Critical => {
-                        // MUY CERCA: Overlay puro (siempre visible, con blending)
-                        renderer.render_mesh_overlay(
-                            &mut framebuffer,
-                            ship,
-                            &SimpleMetallicShader,
-                            &ship_model,
-                            &view_matrix,
-                            &ship_projection,
-                            simulation_time,
-                        );
-                    }
-                    camera::ProximityMode::Close => {
-                        // CERCA: Bias muy agresivo
-                        renderer.render_mesh_with_bias(
-                            &mut framebuffer,
-                            ship,
-                            &SimpleMetallicShader,
-                            &ship_model,
-                            &view_matrix,
-                            &ship_projection,
-                            simulation_time,
-                            -0.8, // Bias MUY agresivo
-                        );
-                    }
-                    camera::ProximityMode::Normal => {
-                        // LEJOS: Renderizado normal con bias ligero
-                        renderer.render_mesh_with_bias(
-                            &mut framebuffer,
-                            ship,
-                            &SimpleMetallicShader,
-                            &ship_model,
-                            &view_matrix,
-                            &ship_projection,
-                            simulation_time,
-                            -0.1, // Bias normal
-                        );
-                    }
-                }
+                // ✅ SIEMPRE usar overlay en tercera persona
+                renderer.render_mesh_overlay(
+                    &mut framebuffer,
+                    ship,
+                    &SimpleMetallicShader,
+                    &ship_model,
+                    &view_matrix,
+                    &ship_projection,
+                    simulation_time,
+                );
             }
         }
 

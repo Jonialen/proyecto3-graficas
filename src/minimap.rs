@@ -30,6 +30,20 @@ impl Minimap {
         }
     }
 
+    pub fn auto_zoom(&mut self, bodies_positions: &[Vec3]) {
+        // Encontrar el planeta más lejano del Sol
+        let mut max_distance = 0.0f32;
+        for pos in bodies_positions.iter().skip(1) {  // Skip sol
+            let dist = (pos.x.powi(2) + pos.z.powi(2)).sqrt();
+            max_distance = max_distance.max(dist);
+        }
+        
+        // Ajustar zoom para que quepa todo con un margen del 20%
+        if max_distance > 0.0 {
+            self.zoom_level = max_distance * 1.2;
+        }
+    }
+
     pub fn adjust_zoom(&mut self, delta: f32) {
         self.zoom_level *= 1.0 + delta * 0.1;
         self.zoom_level = self.zoom_level.clamp(50000.0, 500000.0);

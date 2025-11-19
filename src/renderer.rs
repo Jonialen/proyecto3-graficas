@@ -655,6 +655,129 @@ impl Renderer {
             }
         }
     }
+
+    pub fn render_ring(
+    &self,
+    framebuffer: &mut Framebuffer,
+    mesh: &ObjMesh,
+    shader: &dyn PlanetShader,
+    model_matrix: &Mat4,
+    view_matrix: &Mat4,
+    projection_matrix: &Mat4,
+    time: f32,
+) {
+    let mvp = projection_matrix * view_matrix * model_matrix;
+
+    let transformed_vertices: Vec<_> = mesh
+        .vertices
+        .iter()
+        .map(|v| {
+            // Calcular posición en model space (antes de transformar)
+            let model_pos = v.position;
+            let tv = self.transform_vertex(v, model_matrix, &mvp);
+            (tv, model_pos)  // Guardar ambos
+        })
+        .collect();
+
+    for i in (0..mesh.indices.len()).step_by(3) {
+        let i0 = mesh.indices[i] as usize;
+        let i1 = mesh.indices[i + 1] as usize;
+        let i2 = mesh.indices[i + 2] as usize;
+
+        if i0 < transformed_vertices.len()
+            && i1 < transformed_vertices.len()
+            && i2 < transformed_vertices.len()
+        {
+            self.rasterize_triangle_with_position(
+                framebuffer,
+                &transformed_vertices[i0],
+                &transformed_vertices[i1],
+                &transformed_vertices[i2],
+                shader,
+                time,
+            );
+        }
+    }
+}
+
+fn rasterize_triangle_with_position(
+    &self,
+    framebuffer: &mut Framebuffer,
+    v0: &(TransformedVertex, Vec3),
+    v1: &(TransformedVertex, Vec3),
+    v2: &(TransformedVertex, Vec3),
+    shader: &dyn PlanetShader,
+    time: f32,
+) {
+    let (tv0, pos0) = v0;
+    let (tv1, pos1) = v1;
+    let (tv2, pos2) = v2;
+    
+    if !Self::is_valid_vertex(tv0) 
+        || !Self::is_valid_vertex(tv1) 
+        || !Self::is_valid_vertex(tv2) {
+        return;
+    }
+
+    // ... (código de culling y clipping igual) ...
+    
+    let edge1 = Vec2::new(
+        tv1.screen_pos.x - tv0.screen_pos.x,
+        tv1.screen_pos.y - tv0.screen_pos.y,
+    );
+    let edge2 = Vec2::new(
+        tv2.screen_pos.x - tv0.screen_pos.x,
+        tv2.screen_pos.y - tv0.screen_pos.y,
+    );
+    let cross = edge1.x * edge2.y - edge1.y * edge2.x;
+    
+    if cross <= 0.0 {
+        return;
+    }
+
+    let min_x = tv0.screen_pos.x.min(tv1.screen_pos.x).min(tv2.screen_pos.x)
+        .floor().max(0.0) as usize;
+    let max_x = tv0.screen_pos.x.max(tv1.screen_pos.x).max(tv2.screen_pos.x)
+        .ceil().min(self.width - 1.0) as usize;
+    let min_y = tv0.screen_pos.y.min(tv1.screen_pos.y).min(tv2.screen_pos.y)
+        .floor().max(0.0) as usize;
+    let max_y = tv0.screen_pos.y.max(tv1.screen_pos.y).max(tv2.screen_pos.y)
+        .ceil().min(self.height - 1.0) as usize;
+
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            let p = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+
+            let (w0, w1, w2) = barycentric(
+                &p,
+                &tv0.screen_pos,
+                &tv1.screen_pos,
+                &tv2.screen_pos
+            );
+
+            if w0 >= 0.0 && w1 >= 0.0 && w2 >= 0.0 {
+                let depth = w0 * tv0.depth + w1 * tv1.depth + w2 * tv2.depth;
+                
+                if !depth.is_finite() || depth < -1.0 || depth > 1.0 {
+                    continue;
+                }
+
+                // ✅ Interpolar posición en model space
+                let model_pos = *pos0 * w0 + *pos1 * w1 + *pos2 * w2;
+
+                let world_normal = (tv0.world_normal * w0 
+                    + tv1.world_normal * w1 
+                    + tv2.world_normal * w2)
+                    .normalize();
+
+                // ✅ Pasar posición real al shader
+                let color = shader.fragment(&model_pos, &world_normal, time);
+                
+                framebuffer.set_pixel(x, y, color, depth);
+            }
+        }
+    }
+}
 }
 
 struct TransformedVertex {

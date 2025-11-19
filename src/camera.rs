@@ -369,9 +369,9 @@ impl SpaceshipCamera {
         
         // Posición de la nave relativa a la posición suavizada
         // Ligeramente adelante y arriba para mejor visibilidad
-        let offset_forward = 2.0;
-        let offset_up = 0.8;
-        let offset_right = 0.5;
+        let offset_forward = 2.5;
+        let offset_up = 0.5;
+        let offset_right = 0.0;
         
         let ship_position = self.smoothed_position 
             + forward * offset_forward 
@@ -396,36 +396,45 @@ impl SpaceshipCamera {
     }
 
     pub fn get_proximity_mode(&self, bodies: &[(Vec3, f32)]) -> ProximityMode {
-        // Buscar el cuerpo más cercano primero
-        let mut closest_distance = f32::INFINITY;
+        // Buscar el cuerpo más cercano en el campo de visión
+        let camera_forward = self.forward;
+        let camera_pos = self.position;
+        
+        let mut closest_in_view = f32::INFINITY;
         let mut closest_radius = 0.0;
         
         for (body_pos, body_radius) in bodies {
-            let distance = (body_pos - self.position).magnitude();
-            if distance < closest_distance {
-                closest_distance = distance;
-                closest_radius = *body_radius;
+            // Vector hacia el cuerpo
+            let to_body = body_pos - camera_pos;
+            let distance = to_body.magnitude();
+            
+            // Verificar si está dentro del cono de visión (FOV ~60°)
+            let angle = to_body.normalize().dot(&camera_forward);
+            if angle > 0.5 {  // ~60° half-angle
+                if distance < closest_in_view {
+                    closest_in_view = distance;
+                    closest_radius = *body_radius;
+                }
             }
         }
         
-        // No considerar objetos muy pequeños para el modo crítico
-        if closest_radius < 10.0 {
+        // Si no hay nada en el campo de visión, modo normal
+        if closest_in_view == f32::INFINITY {
             return ProximityMode::Normal;
         }
         
-        // Determinar modo basado en el objeto más cercano
-        let critical_threshold = closest_radius * 5.0;  // Muy cerca
-        let close_threshold = closest_radius * 15.0;     // Relativamente cerca
+        // Determinar modo basado en el objeto más cercano EN EL CAMPO DE VISIÓN
+        let critical_threshold = closest_radius * 5.0;
+        let close_threshold = closest_radius * 15.0;
         
-        if closest_distance < critical_threshold {
+        if closest_in_view < critical_threshold {
             ProximityMode::Critical
-        } else if closest_distance < close_threshold {
+        } else if closest_in_view < close_threshold {
             ProximityMode::Close
         } else {
             ProximityMode::Normal
         }
     }
-
     // ========== MÉTODO ADICIONAL ==========
     // Agregar este método para debug (opcional)
     pub fn get_closest_body_info(&self, bodies: &[(Vec3, f32)]) -> Option<(f32, f32)> {

@@ -15,7 +15,7 @@ pub struct ClassicSunShader;
 
 impl PlanetShader for ClassicSunShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         // Turbulencia multi-capa más compleja
         let turb1 = turbulence(normalized_pos * 2.0 + Vec3::new(time * 0.1, 0.0, 0.0), 4, 0);
@@ -62,7 +62,7 @@ pub struct MercuryShader;
 
 impl PlanetShader for MercuryShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         // Cráteres de impacto multi-escala
         let large_craters = cellular_noise(
@@ -120,7 +120,7 @@ pub struct VenusShader;
 
 impl PlanetShader for VenusShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         // Múltiples capas de nubes a diferentes alturas
         let high_clouds = simplex_noise(
@@ -186,7 +186,7 @@ pub struct EarthShader;
 
 impl PlanetShader for EarthShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         // Continentes y océanos con mejor definición
         let continent_noise = turbulence(normalized_pos * 4.0, 4, 0);
@@ -280,7 +280,7 @@ pub struct MarsShader;
 
 impl PlanetShader for MarsShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         // Terreno marciano estratificado
         let large_terrain = turbulence(normalized_pos * 3.0, 4, 0);
@@ -356,7 +356,7 @@ pub struct JupiterShader;
 
 impl PlanetShader for JupiterShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
         let latitude = normalized_pos.y;
         let longitude = normalized_pos.z.atan2(normalized_pos.x);
 
@@ -470,7 +470,7 @@ pub struct SaturnShader;
 
 impl PlanetShader for SaturnShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
         let latitude = normalized_pos.y;
 
         // Bandas más sutiles y numerosas que Júpiter
@@ -522,7 +522,7 @@ pub struct UranusShader;
 
 impl PlanetShader for UranusShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         // Color cian característico (metano)
         let cyan_bright = Vec3::new(0.65, 0.82, 0.88);
@@ -576,7 +576,7 @@ pub struct NeptuneShader;
 
 impl PlanetShader for NeptuneShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
         let latitude = normalized_pos.y;
         let longitude = normalized_pos.z.atan2(normalized_pos.x);
 
@@ -668,7 +668,7 @@ pub struct CrystalPlanet;
 
 impl PlanetShader for CrystalPlanet {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         // Patrón geométrico hexagonal
         let hex_x = normalized_pos.x * 8.0;
@@ -701,7 +701,7 @@ pub struct LavaPlanet;
 
 impl PlanetShader for LavaPlanet {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         // Patrón de grietas animadas
         let crack_pattern = turbulence(normalized_pos * 5.0, 3, 0);
@@ -733,7 +733,7 @@ pub struct IcePlanet;
 
 impl PlanetShader for IcePlanet {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         let ice_pattern = turbulence(normalized_pos * 10.0, 4, 0);
         let crystal_factor = smoothstep(0.4, 0.6, ice_pattern);
@@ -759,7 +759,7 @@ pub struct MoonShader;
 
 impl PlanetShader for MoonShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         let crater_noise = turbulence(normalized_pos * 8.0, 3, 0);
         let crater = smoothstep(0.6, 0.8, crater_noise);
@@ -783,38 +783,92 @@ impl PlanetShader for MoonShader {
 }
 
 /// Shader para Anillos Planetarios
+/// Shader para Anillos Planetarios
 pub struct RingShader;
 
 impl PlanetShader for RingShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+        // ✅ Ahora pos es la posición real en model space
         let dist_from_center = (pos.x * pos.x + pos.z * pos.z).sqrt();
 
-        let band_count = 15.0;
-        let band = (dist_from_center * band_count).floor();
+        // Normalizar al rango del anillo
+        let ring_inner = 1.3;
+        let ring_outer = 2.0;
+        let normalized_dist = (dist_from_center - ring_inner) / (ring_outer - ring_inner);
+        
+        if normalized_dist < 0.0 || normalized_dist > 1.0 {
+            return Color::from_vec3(Vec3::zeros());
+        }
 
-        let color1 = Vec3::new(0.8, 0.7, 0.6);
-        let color2 = Vec3::new(0.6, 0.5, 0.4);
-        let base_color = if band as i32 % 2 == 0 {
-            color1
-        } else {
-            color2
+        // Bandas bien definidas
+        let band_count = 8.0;
+        let band = (normalized_dist * band_count).floor();
+        let band_fraction = (normalized_dist * band_count).fract();
+
+        // Colores contrastados
+        let bright = Vec3::new(0.95, 0.88, 0.70);
+        let medium = Vec3::new(0.82, 0.72, 0.58);
+        let dark = Vec3::new(0.55, 0.48, 0.40);
+        let very_dark = Vec3::new(0.35, 0.30, 0.25);
+        
+        let base_color = match (band as i32) % 4 {
+            0 => bright,
+            1 => medium,
+            2 => dark,
+            _ => very_dark,
         };
 
-        let noise_val = perlin_noise(pos.x * 20.0, time * 0.1, pos.z * 20.0);
-        let color_with_noise = base_color * (0.8 + noise_val * 0.4);
+        // Gaps (espacios vacíos)
+        let is_gap = (band as i32) % 3 == 2;
+        if is_gap && band_fraction > 0.3 && band_fraction < 0.7 {
+            return Color::from_vec3(Vec3::zeros());
+        }
 
+        // Transición suave entre bandas
+        let transition = smoothstep(0.0, 0.15, band_fraction) 
+            * smoothstep(1.0, 0.85, band_fraction);
+        
+        let next_band_color = match ((band as i32) + 1) % 4 {
+            0 => bright,
+            1 => medium,
+            2 => dark,
+            _ => very_dark,
+        };
+        
+        let blended_color = mix_vec3(base_color, next_band_color, 1.0 - transition);
+
+        // Ruido para textura
+        let noise_val = perlin_noise(
+            pos.x * 40.0, 
+            time * 0.03, 
+            pos.z * 40.0
+        );
+        let color_with_noise = blended_color * (0.9 + noise_val * 0.2);
+
+        // Partículas
+        let particle_noise = cellular_noise(
+            pos.x * 60.0,
+            time * 0.01,
+            pos.z * 60.0
+        );
+        let particles = smoothstep(0.85, 0.92, particle_noise) * 0.3;
+        let surface_color = color_with_noise * (1.0 + particles);
+
+        // Iluminación
         let light_dir = Vec3::new(1.0, 0.5, 1.0).normalize();
         let n_dot_l = normal.dot(&light_dir).abs();
-        let lit_color = color_with_noise * (0.5 + n_dot_l * 0.5);
+        let lit_color = surface_color * (0.7 + n_dot_l * 0.6);
 
-        let alpha_inner = smoothstep(0.0, 0.05, dist_from_center - 1.3);
-        let alpha_outer = smoothstep(2.2, 2.0, dist_from_center);
-        let alpha = alpha_inner * alpha_outer;
+        // Opacidad
+        let band_opacity = if is_gap { 0.3 } else { 0.8 };
+        let alpha_inner = smoothstep(0.0, 0.1, normalized_dist);
+        let alpha_outer = smoothstep(1.0, 0.85, normalized_dist);
+        let alpha = alpha_inner * alpha_outer * band_opacity;
 
-        if alpha < 0.3 {
-            Color::new(5, 5, 15)
+        if alpha < 0.15 {
+            Color::from_vec3(Vec3::zeros())
         } else {
-            Color::from_vec3(lit_color * alpha)
+            Color::from_vec3(lit_color * alpha.max(0.5))
         }
     }
 }
@@ -824,7 +878,7 @@ pub struct SimpleMetallicShader;
 
 impl PlanetShader for SimpleMetallicShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
         
         // Patrón de paneles
         let panel_noise = perlin_noise(
@@ -880,7 +934,7 @@ pub struct AsteroidShader;
 
 impl PlanetShader for AsteroidShader {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         // Superficie extremadamente rugosa y crateada
         let rough_noise = turbulence(normalized_pos * 20.0, 4, 0);
@@ -929,7 +983,7 @@ pub struct RockyPlanet;
 
 impl PlanetShader for RockyPlanet {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
 
         let height = normalized_pos.y;
         let base_color = if height > 0.4 {
@@ -959,7 +1013,7 @@ pub struct GasGiant;
 
 impl PlanetShader for GasGiant {
     fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
-        let normalized_pos = pos.normalize();
+        let normalized_pos = *normal;
         let latitude = normalized_pos.y;
 
         // Bandas de colores

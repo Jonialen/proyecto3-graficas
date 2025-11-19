@@ -4,7 +4,7 @@ Este es un proyecto para la clase de Gráficas por Computadora en la Universidad
 
 ## Video de Demostración
 
-[https://youtu.be/RQ98xZr_7Qs]()
+[![Video](https://img.youtube.com/vi/RQ98xZr_7Qs/maxresdefault.jpg)](https://youtu.be/RQ98xZr_7Qs)
 
 ## Características
 

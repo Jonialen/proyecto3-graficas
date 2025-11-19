@@ -7,7 +7,6 @@ pub enum CelestialType {
     Star,
     Planet,
     Moon,
-    Ring,
     Asteroid,
 }
 
@@ -109,12 +108,12 @@ impl CelestialBody {
     pub fn get_world_position(&self, time: f32, parent_pos: Option<Vec3>) -> Vec3 {
         let orbital_pos = match &self.orbital_params {
             Some(params) => params.get_position(time),
-            None => Vec3::zeros(),
+            _none => Vec3::zeros(),
         };
 
         match parent_pos {
             Some(p) => p + orbital_pos,
-            None => orbital_pos,
+            _none => orbital_pos,
         }
     }
 
@@ -148,7 +147,7 @@ impl CelestialBody {
                 }
                 points
             }
-            None => Vec::new(),
+            _none => Vec::new(),
         }
     }
 }

@@ -1,11 +1,10 @@
-use nalgebra_glm::{Vec2, Vec3};
+use nalgebra_glm::{Vec3};
 use std::f32::consts::PI;
 
 #[derive(Debug, Clone)]
 pub struct Vertex {
     pub position: Vec3,
     pub normal: Vec3,
-    pub uv: Vec2,
 }
 
 #[derive(Clone)]
@@ -22,7 +21,6 @@ impl ObjMesh {
         vertices.push(Vertex {
             position: Vec3::new(0.0, radius, 0.0),
             normal: Vec3::new(0.0, 1.0, 0.0),
-            uv: Vec2::new(0.5, 0.0),
         });
 
         for r in 1..rings {
@@ -36,16 +34,14 @@ impl ObjMesh {
 
                 let position = Vec3::new(x * radius, y * radius, z * radius);
                 let normal = Vec3::new(x, y, z);
-                let uv = Vec2::new(s as f32 / sectors as f32, r as f32 / rings as f32);
 
-                vertices.push(Vertex { position, normal, uv });
+                vertices.push(Vertex { position, normal });
             }
         }
 
         vertices.push(Vertex {
             position: Vec3::new(0.0, -radius, 0.0),
             normal: Vec3::new(0.0, -1.0, 0.0),
-            uv: Vec2::new(0.5, 1.0),
         });
 
         for s in 0..sectors {
@@ -110,13 +106,7 @@ impl ObjMesh {
                 position.normalize()
             };
 
-            let uv = if !mesh.texcoords.is_empty() {
-                Vec2::new(mesh.texcoords[i * 2], mesh.texcoords[i * 2 + 1])
-            } else {
-                Vec2::new(0.0, 0.0)
-            };
-
-            vertices.push(Vertex { position, normal, uv });
+            vertices.push(Vertex { position, normal });
         }
 
         Ok(ObjMesh {
@@ -145,7 +135,6 @@ impl ObjMesh {
                 vertices.push(Vertex {
                     position: Vec3::new(x, 0.0, z),
                     normal: Vec3::new(0.0, 1.0, 0.0),
-                    uv: Vec2::new(s as f32 / segments as f32, ring as f32),
                 });
             }
         }

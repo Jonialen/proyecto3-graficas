@@ -10,9 +10,7 @@ pub struct Minimap {
     pub show_orbits: bool,
     pub show_labels: bool,
     pub show_distances: bool,
-    padding: i32,
     
-    highlight_planet: Option<usize>,
     highlight_pulse: f32,
 }
 
@@ -24,8 +22,6 @@ impl Minimap {
             show_orbits: true,
             show_labels: true,
             show_distances: false,
-            padding: 15,
-            highlight_planet: None,
             highlight_pulse: 0.0,
         }
     }

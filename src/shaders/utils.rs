@@ -73,73 +73,6 @@ pub fn temperature_to_color(temp: f32) -> Vec3 {
     }
 }
 
-/// Convierte un valor de matiz (hue) en un color RGB iridiscente.
-///
-/// # Arguments
-/// * `hue` - Matiz normalizado [0.0, 1.0] (ciclo completo de color)
-///
-/// # Returns
-/// Color RGB como Vec3
-#[inline]
-pub fn hue_to_rgb(hue: f32) -> Vec3 {
-    let h = hue % 1.0;
-    
-    if h < 0.33 {
-        // Magenta → Violeta
-        mix_vec3(
-            Vec3::new(1.0, 0.0, 0.5),
-            Vec3::new(0.5, 0.0, 1.0),
-            h * 3.0,
-        )
-    } else if h < 0.66 {
-        // Violeta → Cian
-        mix_vec3(
-            Vec3::new(0.5, 0.0, 1.0),
-            Vec3::new(0.0, 1.0, 1.0),
-            (h - 0.33) * 3.0,
-        )
-    } else {
-        // Cian → Magenta
-        mix_vec3(
-            Vec3::new(0.0, 1.0, 1.0),
-            Vec3::new(1.0, 0.0, 0.5),
-            (h - 0.66) * 3.0,
-        )
-    }
-}
-
-/// Convierte HSV (Hue, Saturation, Value) a RGB.
-///
-/// # Arguments
-/// * `h` - Matiz [0.0, 1.0]
-/// * `s` - Saturación [0.0, 1.0]
-/// * `v` - Valor/Brillo [0.0, 1.0]
-///
-/// # Returns
-/// Color RGB como Vec3
-#[inline]
-pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> Vec3 {
-    let c = v * s;
-    let x = c * (1.0 - ((h * 6.0) % 2.0 - 1.0).abs());
-    let m = v - c;
-
-    let (r, g, b) = if h < 1.0 / 6.0 {
-        (c, x, 0.0)
-    } else if h < 2.0 / 6.0 {
-        (x, c, 0.0)
-    } else if h < 3.0 / 6.0 {
-        (0.0, c, x)
-    } else if h < 4.0 / 6.0 {
-        (0.0, x, c)
-    } else if h < 5.0 / 6.0 {
-        (x, 0.0, c)
-    } else {
-        (c, 0.0, x)
-    };
-
-    Vec3::new(r + m, g + m, b + m)
-}
-
 // ===================================================================================
 // ========== EFECTOS VISUALES ==========
 // ===================================================================================
@@ -172,18 +105,4 @@ pub fn fresnel(view_dir: &Vec3, normal: &Vec3, power: f32) -> f32 {
 pub fn pulse(time: f32, frequency: f32, min: f32, max: f32) -> f32 {
     let normalized = (time * frequency).sin() * 0.5 + 0.5;
     min + (max - min) * normalized
-}
-
-/// Genera una pulsación con curva exponencial (más dramática).
-///
-/// # Arguments
-/// * `time` - Tiempo actual
-/// * `frequency` - Frecuencia de pulsación
-/// * `power` - Exponente para la curva (mayor = más dramático)
-///
-/// # Returns
-/// Valor pulsante [0.0, 1.0]
-#[inline]
-pub fn pulse_pow(time: f32, frequency: f32, power: f32) -> f32 {
-    ((time * frequency).sin() * 0.5 + 0.5).powf(power)
 }

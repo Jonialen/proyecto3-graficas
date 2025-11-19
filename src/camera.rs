@@ -180,23 +180,6 @@ impl SpaceshipCamera {
         self.update_vectors();
     }
 
-    pub fn teleport_to(&mut self, target_position: Vec3, offset_distance: f32) {
-        let safe_distance = (offset_distance * 3.0).max(100.0);
-        
-        self.position = target_position + Vec3::new(0.0, safe_distance * 0.3, safe_distance);
-        self.velocity = Vec3::zeros();
-        
-        let direction = (target_position - self.position).normalize();
-        self.yaw = direction.z.atan2(direction.x);
-        self.pitch = direction.y.asin();
-        
-        // Sincronizar valores suavizados al teleportarse
-        self.smoothed_position = self.position;
-        self.smoothed_rotation = (self.yaw, self.pitch);
-        
-        self.update_vectors();
-    }
-
     pub fn get_view_matrix(&self) -> Mat4 {
         if self.third_person {
             // Usar valores suavizados para la cámara
@@ -220,25 +203,6 @@ impl SpaceshipCamera {
         } else {
             look_at(&self.position, &self.target, &self.up)
         }
-    }
-
-    pub fn get_ship_model_matrix(&self, scale: f32) -> Mat4 {
-        let mut transform = Mat4::identity();
-        
-        // Usar posición suavizada
-        transform = nalgebra_glm::translate(&transform, &self.smoothed_position);
-        
-        // Rotación suavizada
-        let rotation_y = self.smoothed_rotation.0 + std::f32::consts::PI;
-        transform = nalgebra_glm::rotate(&transform, rotation_y, &Vec3::y());
-        
-        let rotation_x = -self.smoothed_rotation.1;
-        transform = nalgebra_glm::rotate(&transform, rotation_x, &Vec3::x());
-        
-        // Escala
-        transform = nalgebra_glm::scale(&transform, &Vec3::new(scale, scale, scale));
-        
-        transform
     }
 
     pub fn get_nearest_body_distance(&self, bodies_positions: &[Vec3]) -> Option<(usize, f32)> {
@@ -347,12 +311,6 @@ impl SpaceshipCamera {
         self.smoothed_rotation = (self.yaw, self.pitch);
     }
 
-    /// Calcula la escala apropiada de la nave según la distancia de cámara
-    pub fn get_ship_scale(&self) -> f32 {
-        // Escala base fija - la nave no debe cambiar de tamaño
-        0.35
-    }
-
     /// Matriz de modelo mejorada para la nave con posición fija relativa
     pub fn get_ship_model_matrix_fixed(&self, base_scale: f32) -> Mat4 {
         let mut transform = Mat4::identity();
@@ -395,71 +353,4 @@ impl SpaceshipCamera {
         transform
     }
 
-    pub fn get_proximity_mode(&self, bodies: &[(Vec3, f32)]) -> ProximityMode {
-        // Buscar el cuerpo más cercano en el campo de visión
-        let camera_forward = self.forward;
-        let camera_pos = self.position;
-        
-        let mut closest_in_view = f32::INFINITY;
-        let mut closest_radius = 0.0;
-        
-        for (body_pos, body_radius) in bodies {
-            // Vector hacia el cuerpo
-            let to_body = body_pos - camera_pos;
-            let distance = to_body.magnitude();
-            
-            // Verificar si está dentro del cono de visión (FOV ~60°)
-            let angle = to_body.normalize().dot(&camera_forward);
-            if angle > 0.5 {  // ~60° half-angle
-                if distance < closest_in_view {
-                    closest_in_view = distance;
-                    closest_radius = *body_radius;
-                }
-            }
-        }
-        
-        // Si no hay nada en el campo de visión, modo normal
-        if closest_in_view == f32::INFINITY {
-            return ProximityMode::Normal;
-        }
-        
-        // Determinar modo basado en el objeto más cercano EN EL CAMPO DE VISIÓN
-        let critical_threshold = closest_radius * 5.0;
-        let close_threshold = closest_radius * 15.0;
-        
-        if closest_in_view < critical_threshold {
-            ProximityMode::Critical
-        } else if closest_in_view < close_threshold {
-            ProximityMode::Close
-        } else {
-            ProximityMode::Normal
-        }
-    }
-    // ========== MÉTODO ADICIONAL ==========
-    // Agregar este método para debug (opcional)
-    pub fn get_closest_body_info(&self, bodies: &[(Vec3, f32)]) -> Option<(f32, f32)> {
-        let mut closest_distance = f32::INFINITY;
-        let mut closest_radius = 0.0;
-        
-        for (body_pos, body_radius) in bodies {
-            let distance = (body_pos - self.position).magnitude();
-            if distance < closest_distance {
-                closest_distance = distance;
-                closest_radius = *body_radius;
-            }
-        }
-        
-        if closest_distance < f32::INFINITY {
-            Some((closest_distance, closest_radius))
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum ProximityMode {
-    Normal,   // Lejos de todo
-    Close,    // Relativamente cerca
-    Critical, // Muy cerca de un cuerpo
 }

@@ -10,7 +10,6 @@ pub struct Color {
 impl Color {
     // CONSTANTES AGREGADAS
     pub const BLACK: Color = Color { r: 0, g: 0, b: 0 };
-    pub const WHITE: Color = Color { r: 255, g: 255, b: 255 };
 
     #[inline]
     pub fn new(r: u8, g: u8, b: u8) -> Self {
@@ -24,15 +23,6 @@ impl Color {
             g: (v.y.clamp(0.0, 1.0) * 255.0) as u8,
             b: (v.z.clamp(0.0, 1.0) * 255.0) as u8,
         }
-    }
-
-    #[inline]
-    pub fn to_vec3(&self) -> Vec3 {
-        Vec3::new(
-            self.r as f32 / 255.0,
-            self.g as f32 / 255.0,
-            self.b as f32 / 255.0,
-        )
     }
 
     #[inline]

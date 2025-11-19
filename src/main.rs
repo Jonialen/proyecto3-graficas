@@ -178,8 +178,6 @@ fn main() {
             .map(|(i, _body)| (world_positions[i], celestial_bodies[i].radius))
             .collect();
 
-        let proximity_mode = camera.get_proximity_mode(&collision_data);
-
         // ------------ Entradas globales ------------
         if rl.is_key_pressed(KeyboardKey::KEY_SPACE) {
             paused = !paused;
@@ -285,12 +283,6 @@ fn main() {
             50.0, 
             5000000.0,
         );
-        let projection_matrix_near = perspective(
-            WIDTH as f32 / HEIGHT as f32,
-            60.0_f32.to_radians(), 
-            0.1, 
-            1000.0,
-        );
 
         // ------------ Limpiar framebuffer ------------
         framebuffer.clear(Color::new(5, 5, 15));
@@ -376,7 +368,6 @@ fn main() {
                     _ => Box::new(RockyPlanet),
                 }
                 CelestialType::Moon => Box::new(MoonShader),
-                CelestialType::Ring => Box::new(RingShader),
                 CelestialType::Asteroid => Box::new(AsteroidShader),
             };
 
@@ -620,7 +611,7 @@ fn main() {
             // Dibujar los ítems visibles
             let mut y = 140;
             for (display_idx, item_idx) in (start_idx..end_idx).enumerate() {
-                let (real_idx, body) = menu_bodies[item_idx];
+                let (_real_idx, body) = menu_bodies[item_idx];
 
                 // Texto como: 0. Earth
                 let label = format!("{}. {}", display_idx, body.name);

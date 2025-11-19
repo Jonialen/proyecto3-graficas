@@ -1,4 +1,3 @@
-use nalgebra_glm::Vec3;
 use raylib::prelude::*;
 use crate::celestial_body::CelestialBody;
 

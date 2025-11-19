@@ -14,7 +14,7 @@ pub trait PlanetShader {
 pub struct ClassicSunShader;
 
 impl PlanetShader for ClassicSunShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = *normal;
 
         // Turbulencia multi-capa más compleja
@@ -61,7 +61,7 @@ impl PlanetShader for ClassicSunShader {
 pub struct MercuryShader;
 
 impl PlanetShader for MercuryShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
         let normalized_pos = *normal;
 
         // Cráteres de impacto multi-escala
@@ -119,7 +119,7 @@ impl PlanetShader for MercuryShader {
 pub struct VenusShader;
 
 impl PlanetShader for VenusShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = *normal;
 
         // Múltiples capas de nubes a diferentes alturas
@@ -185,7 +185,7 @@ impl PlanetShader for VenusShader {
 pub struct EarthShader;
 
 impl PlanetShader for EarthShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = *normal;
 
         // Continentes y océanos con mejor definición
@@ -279,7 +279,7 @@ impl PlanetShader for EarthShader {
 pub struct MarsShader;
 
 impl PlanetShader for MarsShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = *normal;
 
         // Terreno marciano estratificado
@@ -355,7 +355,7 @@ impl PlanetShader for MarsShader {
 pub struct JupiterShader;
 
 impl PlanetShader for JupiterShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = *normal;
         let latitude = normalized_pos.y;
         let longitude = normalized_pos.z.atan2(normalized_pos.x);
@@ -469,7 +469,7 @@ impl PlanetShader for JupiterShader {
 pub struct SaturnShader;
 
 impl PlanetShader for SaturnShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = *normal;
         let latitude = normalized_pos.y;
 
@@ -521,7 +521,7 @@ impl PlanetShader for SaturnShader {
 pub struct UranusShader;
 
 impl PlanetShader for UranusShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = *normal;
 
         // Color cian característico (metano)
@@ -575,7 +575,7 @@ impl PlanetShader for UranusShader {
 pub struct NeptuneShader;
 
 impl PlanetShader for NeptuneShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = *normal;
         let latitude = normalized_pos.y;
         let longitude = normalized_pos.z.atan2(normalized_pos.x);
@@ -667,7 +667,7 @@ impl PlanetShader for NeptuneShader {
 pub struct MoonShader;
 
 impl PlanetShader for MoonShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
         let normalized_pos = *normal;
 
         let crater_noise = turbulence(normalized_pos * 8.0, 3, 0);
@@ -786,7 +786,7 @@ impl PlanetShader for RingShader {
 pub struct SimpleMetallicShader;
 
 impl PlanetShader for SimpleMetallicShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, time: f32) -> Color {
         let normalized_pos = *normal;
         
         // Patrón de paneles
@@ -842,7 +842,7 @@ impl PlanetShader for SimpleMetallicShader {
 pub struct AsteroidShader;
 
 impl PlanetShader for AsteroidShader {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
         let normalized_pos = *normal;
 
         // Superficie extremadamente rugosa y crateada
@@ -891,7 +891,7 @@ impl PlanetShader for AsteroidShader {
 pub struct RockyPlanet;
 
 impl PlanetShader for RockyPlanet {
-    fn fragment(&self, pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
+    fn fragment(&self, _pos: &Vec3, normal: &Vec3, _time: f32) -> Color {
         let normalized_pos = *normal;
 
         let height = normalized_pos.y;

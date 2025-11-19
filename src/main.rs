@@ -140,7 +140,6 @@ fn main() {
     println!("=== Sistema iniciado correctamente ===\n");
 
     // =================== LOOP PRINCIPAL ===================
-    // =================== LOOP PRINCIPAL ===================
     while !rl.window_should_close() {
         frame_time += rl.get_frame_time();
 
@@ -388,7 +387,7 @@ fn main() {
                     &Vec3::new(1.0, 0.0, 0.3),
                 );
                 
-                // ✅ Usar render_ring en lugar de render_mesh
+                // Usar render_ring en lugar de render_mesh
                 renderer.render_ring(
                     &mut framebuffer,
                     &ring_mesh,
@@ -424,7 +423,7 @@ fn main() {
                 let ship_scale = 0.35;
                 let ship_model = camera.get_ship_model_matrix_fixed(ship_scale);
 
-                // ✅ SIEMPRE usar overlay en tercera persona
+                // SIEMPRE usar overlay en tercera persona
                 renderer.render_mesh_overlay(
                     &mut framebuffer,
                     ship,
@@ -490,14 +489,6 @@ fn main() {
             &format!("Tiempo: {:.1}x", current_time_scale / time_scale),
             10, 100, 16, raylib::color::Color::SKYBLUE
         );
-
-        // d.draw_text(
-        //     "[ / ] Zoom | L Labels | K Dist | M Toggle",
-        //     WIDTH as i32 - 250,
-        //     HEIGHT as i32 - 25,
-        //     12,
-        //     raylib::color::Color::new(150, 150, 180, 200),
-        // );
 
         // ----- Advertencia de colisión -----
         if let Some((idx, distance, severity)) = camera.get_collision_warning(&collision_data) {

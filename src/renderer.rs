@@ -595,7 +595,7 @@ fn rasterize_triangle_with_position(
                     continue;
                 }
 
-                // ✅ Interpolar posición en model space
+                // Interpolar posición en model space
                 let model_pos = *pos0 * w0 + *pos1 * w1 + *pos2 * w2;
 
                 let world_normal = (tv0.world_normal * w0 
@@ -603,7 +603,7 @@ fn rasterize_triangle_with_position(
                     + tv2.world_normal * w2)
                     .normalize();
 
-                // ✅ Pasar posición real al shader
+                // Pasar posición real al shader
                 let color = shader.fragment(&model_pos, &world_normal, time);
                 
                 framebuffer.set_pixel(x, y, color, depth);
